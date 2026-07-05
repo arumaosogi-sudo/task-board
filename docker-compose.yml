@@ -1,0 +1,64 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taskboard
+      POSTGRES_PASSWORD: taskboard
+      POSTGRES_DB: taskboard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskboard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      COLLAB_PORT: 3002
+      # Local stack uses the bundled Postgres; no pooler needed.
+      DATABASE_URL: postgresql://taskboard:taskboard@db:5432/taskboard
+      DIRECT_URL: postgresql://taskboard:taskboard@db:5432/taskboard
+      WEB_URL: http://localhost:8080
+      CORS_ORIGINS: http://localhost:8080
+      JWT_SECRET: change-me-in-production-at-least-32-chars
+      JWT_REFRESH_SECRET: change-me-refresh-at-least-32-chars
+      JWT_ACCESS_EXPIRES: 15m
+      JWT_REFRESH_EXPIRES: 30d
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      EMAIL_FROM: noreply@taskboard.local
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3001
+        VITE_COLLAB_URL: ws://localhost:3002
+    depends_on:
+      - api
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:

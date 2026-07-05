@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Task Board</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236d5bd0'/><text x='16' y='22' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='18' fill='white'>T</text></svg>" />
+    <!-- Anti-FOUC: apply saved theme attributes before CSS renders -->
+    <script>
+      try {
+        var t = localStorage.getItem('tb-theme')
+        var m = localStorage.getItem('tb-mode')
+        var el = document.documentElement
+        el.setAttribute('data-theme', t || 'violet')
+        el.setAttribute('data-mode', m === 'dark' ? 'dark' : 'light')
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'violet')
+        document.documentElement.setAttribute('data-mode', 'light')
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

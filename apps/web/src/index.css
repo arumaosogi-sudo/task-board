@@ -1,0 +1,158 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================================
+   Theming model: COLOR is independent of MODE.
+   - `data-theme`  = accent color  (violet | ocean | forest | sunset | rose | amber)
+   - `data-mode`   = light | dark
+   Tokens are RGB-channel custom properties so Tailwind opacity modifier works.
+============================================================================ */
+
+/* ---- Surfaces: LIGHT (default) ---- */
+:root {
+  --c-primary-fg: 255 255 255;
+  --c-ink: 29 35 51;
+  --c-nav: 29 35 51;
+  --c-nav-fg: 233 235 242;
+  --c-paper: 246 245 242;
+  --c-card: 255 255 255;
+  --c-line: 228 226 221;
+  --c-muted: 97 103 116;
+  --c-subtle: 108 112 121;
+  --c-add-fg: 31 122 61;
+  --c-add-bg: 228 245 233;
+  --c-del-fg: 192 54 44;
+  --c-del-bg: 251 231 229;
+  --c-success: 31 122 61;
+  --c-warn: 183 121 31;
+  --c-danger: 192 54 44;
+  /* default accent = violet light */
+  --c-primary: 106 88 202;
+  --c-primary-hover: 91 76 174;
+  --c-primary-soft: 236 233 251;
+}
+
+/* ---- Surfaces: DARK ---- */
+html[data-mode='dark'] {
+  --c-primary-fg: 16 20 30;
+  --c-ink: 246 248 252;
+  --c-nav: 12 16 26;
+  --c-nav-fg: 245 247 252;
+  --c-paper: 16 20 31;
+  --c-card: 31 38 56;
+  --c-line: 58 66 88;
+  --c-muted: 188 196 214;
+  --c-subtle: 146 156 176;
+  --c-add-fg: 134 224 168;
+  --c-add-bg: 23 58 40;
+  --c-del-fg: 244 146 138;
+  --c-del-bg: 64 32 32;
+  --c-success: 134 224 168;
+  --c-warn: 232 186 96;
+  --c-danger: 244 146 138;
+}
+
+/* ---- Accent per COLOR (light) ---- */
+html[data-theme='violet'] { --c-primary: 106 88 202;  --c-primary-hover: 91 76 174;   --c-primary-soft: 236 233 251; }
+html[data-theme='ocean']  { --c-primary: 39 104 199;  --c-primary-hover: 34 89 171;   --c-primary-soft: 227 237 253; }
+html[data-theme='forest'] { --c-primary: 24 124 69;   --c-primary-hover: 21 107 59;   --c-primary-soft: 224 243 232; }
+html[data-theme='sunset'] { --c-primary: 181 75 29;   --c-primary-hover: 156 65 25;   --c-primary-soft: 253 234 224; }
+html[data-theme='rose']   { --c-primary: 186 57 102;  --c-primary-hover: 160 49 88;   --c-primary-soft: 252 228 237; }
+html[data-theme='amber']  { --c-primary: 149 99 16;   --c-primary-hover: 128 85 14;   --c-primary-soft: 250 240 220; }
+
+/* ---- Accent per COLOR (dark) ---- */
+html[data-theme='violet'][data-mode='dark'] { --c-primary: 150 132 245; --c-primary-hover: 170 154 250; --c-primary-soft: 44 40 78; }
+html[data-theme='ocean'][data-mode='dark']  { --c-primary: 96 165 250;  --c-primary-hover: 130 185 255; --c-primary-soft: 26 42 70; }
+html[data-theme='forest'][data-mode='dark'] { --c-primary: 74 200 140;  --c-primary-hover: 104 215 162; --c-primary-soft: 20 50 38; }
+html[data-theme='sunset'][data-mode='dark'] { --c-primary: 245 146 102; --c-primary-hover: 250 168 130; --c-primary-soft: 58 36 26; }
+html[data-theme='rose'][data-mode='dark']   { --c-primary: 240 122 165; --c-primary-hover: 245 146 184; --c-primary-soft: 58 30 44; }
+html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-primary-hover: 235 186 92;  --c-primary-soft: 58 46 22; }
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-paper text-ink font-body antialiased;
+    font-size: 14px;
+  }
+  h1, h2, h3, h4 { @apply font-heading; }
+  :focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgb(var(--c-primary) / 0.45);
+    border-radius: 6px;
+  }
+  ::selection { background: rgb(var(--c-primary) / 0.22); }
+}
+
+@layer utilities {
+  .skeleton { @apply relative overflow-hidden bg-line/60 rounded; }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0 -translate-x-full;
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.45), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+  html[data-mode='dark'] .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.08), transparent);
+  }
+  .paper-shadow { box-shadow: 0 1px 2px rgb(0 0 0 / 0.10), 0 12px 40px rgb(0 0 0 / 0.18); }
+  .scroll-thin::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scroll-thin::-webkit-scrollbar-thumb { @apply bg-line rounded-full; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after { animation: none; }
+}
+
+/* Rich document content (CollabEditor + PDF export). Uses theme tokens. */
+.tb-prose h1 { @apply font-heading text-2xl font-bold mt-4 mb-2; }
+.tb-prose h2 { @apply font-heading text-xl font-semibold mt-3 mb-2; }
+.tb-prose p { @apply my-2; }
+.tb-prose ul { @apply my-2 list-disc pl-6; }
+.tb-prose ol { @apply my-2 list-decimal pl-6; }
+.tb-prose li { @apply my-0.5; }
+.tb-prose a { @apply text-primary underline; }
+.tb-prose img { @apply my-2 max-w-full rounded-lg; }
+.tb-prose svg.tb-drawing { @apply my-2 block; }
+.tb-box { @apply my-3 rounded-xl border-l-4 border-primary bg-primary-soft/50 px-4 py-3; }
+
+/* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
+.tb-prose:focus { outline: none; }
+.tb-prose .ProseMirror-selectednode { @apply rounded-lg outline outline-2 outline-primary; }
+/* Text alignment (TipTap TextAlign writes inline text-align; keep block flow intact). */
+.tb-prose [style*='text-align:center'] { text-align: center; }
+.tb-prose [style*='text-align:right'] { text-align: right; }
+
+/* ---- Live collaboration cursors (Phase 4.3, CollaborationCursor) ---- */
+/* Caret border + label background come from each peer's inline color (see presence.ts). */
+.collaboration-cursor__caret {
+  position: relative;
+  margin-left: -1px;
+  margin-right: -1px;
+  border-left: 1px solid;
+  border-right: 1px solid;
+  border-color: inherit;
+  pointer-events: none;
+  word-break: normal;
+}
+.collaboration-cursor__label {
+  position: absolute;
+  top: -1.4em;
+  left: -1px;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px 4px 4px 0;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: normal;
+  white-space: nowrap;
+  user-select: none;
+}

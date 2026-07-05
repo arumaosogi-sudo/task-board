@@ -1,0 +1,235 @@
+// Task Board — Prisma schema (Phase 1: Auth Core)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection (Supabase Supavisor / PgBouncer) for the app at runtime —
+  // handles many concurrent connections under heavy load.
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection for migrations.
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  email         String   @unique
+  passwordHash  String?
+  googleId      String?  @unique
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  setting            UserSetting?
+  refreshTokens      RefreshToken[]
+  emailVerifications EmailVerification[]
+  passwordResets     PasswordReset[]
+
+  // Phase 2 — Projects & Membership
+  ownedProjects   Project[]    @relation("OwnedProjects")
+  memberships     Membership[]
+  projectPins     ProjectPin[]
+  sentInvitations Invitation[] @relation("InvitedBy")
+
+  // Phase 4 — Collaboration / Version history
+  revisions Revision[]
+
+  // Phase 5 — Notifications
+  notifications Notification[]
+}
+
+model UserSetting {
+  id         String @id @default(cuid())
+  userId     String @unique
+  themeColor String @default("violet")
+  themeMode  String @default("light")
+  language   String @default("th")
+  fontSize   Int    @default(14)
+
+  // Phase 5 — per-type notification opt-in (in-app delivery)
+  notifyInvite   Boolean @default(true)
+  notifyMention  Boolean @default(true)
+  notifyRevision Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ─────────────────────────── Phase 2: Projects ───────────────────────────────
+
+enum Role {
+  Owner
+  Editor
+  Viewer
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String    @default("")
+  ownerId     String
+  deletedAt   DateTime? // soft-delete (trash, 30-day retention enforced in app)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  owner       User         @relation("OwnedProjects", fields: [ownerId], references: [id])
+  memberships Membership[]
+  invitations Invitation[]
+  pins        ProjectPin[]
+  files       File[]
+
+  @@index([ownerId])
+  @@index([deletedAt])
+}
+
+model Membership {
+  id        String   @id @default(cuid())
+  projectId String
+  userId    String
+  role      Role     @default(Viewer)
+  createdAt DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId]) // one membership per user per project
+  @@index([userId])
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  projectId   String
+  email       String // invitee email (may not have an account yet)
+  role        Role      @default(Viewer)
+  token       String    @unique // SHA-256 hash of the opaque invite token
+  invitedById String
+  acceptedAt  DateTime?
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("InvitedBy", fields: [invitedById], references: [id])
+
+  @@index([projectId])
+  @@index([email])
+}
+
+model ProjectPin {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+}
+
+// ─────────────────────────── Phase 3: Files / Work Page ──────────────────────
+
+enum FileKind {
+  Folder
+  Document
+}
+
+model File {
+  id          String    @id @default(cuid())
+  projectId   String
+  parentId    String? // null = root of the project's file tree
+  name        String
+  kind        FileKind  @default(Document)
+  orientation String? // 'portrait' | 'landscape' (documents only)
+  content     String? // document body (autosaved); JSON/HTML string
+  ydoc        Bytes? // Phase 4 — Yjs CRDT binary state (source of truth while collaborating)
+  order       Int       @default(0)
+  deletedAt   DateTime? // soft-delete
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    File?      @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  File[]     @relation("FileTree")
+  revisions Revision[]
+
+  @@index([projectId])
+  @@index([parentId])
+}
+
+// ─────────────────────────── Phase 4: Collaboration / Revisions ──────────────
+
+model Revision {
+  id        String   @id @default(cuid())
+  fileId    String
+  authorId  String
+  content   String // HTML snapshot at the time the revision was taken
+  label     String? // optional user-set label ("v1.0", "before review", …)
+  createdAt DateTime @default(now())
+
+  file   File @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@index([fileId])
+}
+
+// ─────────────────────────── Phase 5: Notifications ──────────────────────────
+
+enum NotificationType {
+  ProjectInvite // added to / invited to a project
+  Mention // @mentioned inside a document
+  Revision // a new version was saved in a project you belong to
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String // recipient
+  type      NotificationType
+  // Denormalised payload rendered by the client (actor name, project/file names,
+  // deep-link target, …). JSON keeps the schema stable as notification kinds grow.
+  payload   Json
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}

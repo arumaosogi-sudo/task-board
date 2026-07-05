@@ -1,0 +1,86 @@
+{
+  "$description": "Task Board design tokens. Color values are sRGB hex; the runtime exposes them as RGB-channel CSS custom properties (e.g. --c-primary: 109 91 208) so Tailwind opacity utilities and runtime theming both work. See src/index.css for the wired-up themes.",
+  "color": {
+    "base": {
+      "primary": { "value": "#6d5bd0", "comment": "accent / brand purple" },
+      "primary-fg": { "value": "#ffffff" },
+      "primary-soft": { "value": "#ece9fb" },
+      "primary-hover": { "value": "#5d4cc0" },
+      "ink": { "value": "#1d2333", "comment": "primary text" },
+      "nav": { "value": "#1d2333", "comment": "sidebar / nav surface" },
+      "nav-fg": { "value": "#e9ebf2" },
+      "paper": { "value": "#f6f5f2", "comment": "app background, warm paper" },
+      "card": { "value": "#ffffff" },
+      "line": { "value": "#e4e2dd", "comment": "hairline borders" },
+      "muted": { "value": "#6b7180", "comment": "secondary text" },
+      "subtle": { "value": "#9aa0ad", "comment": "placeholder / tertiary" }
+    },
+    "diff": {
+      "add-fg": { "value": "#1f7a3d" },
+      "add-bg": { "value": "#e4f5e9" },
+      "del-fg": { "value": "#c0362c" },
+      "del-bg": { "value": "#fbe7e5" }
+    },
+    "status": {
+      "success": { "value": "#1f7a3d" },
+      "warn": { "value": "#b7791f" },
+      "danger": { "value": "#c0362c" }
+    },
+    "presence": {
+      "a": { "value": "#f08a8a" },
+      "b": { "value": "#e9c46a" },
+      "c": { "value": "#82d178" },
+      "d": { "value": "#5fc9d6" },
+      "e": { "value": "#6d5bd0" },
+      "f": { "value": "#e08ad0" }
+    }
+  },
+  "theming": {
+    "$comment": "Color is independent of mode. data-theme = color (6), data-mode = light|dark. Surfaces come from MODE; accent from COLOR×MODE. Every color has its own dark mode.",
+    "surfaces": {
+      "light": { "ink": "#1d2333", "nav": "#1d2333", "nav-fg": "#e9ebf2", "paper": "#f6f5f2", "card": "#ffffff", "line": "#e4e2dd", "muted": "#6b7180", "subtle": "#9aa0ad", "primary-fg": "#ffffff" },
+      "dark": { "ink": "#e9ebf2", "nav": "#0d111c", "nav-fg": "#e9ebf2", "paper": "#121622", "card": "#1c2232", "line": "#2c3346", "muted": "#9ca5ba", "subtle": "#687084", "primary-fg": "#121622" }
+    },
+    "accents": {
+      "violet": { "light": { "primary": "#6d5bd0", "hover": "#5d4cc0", "soft": "#ece9fb" }, "dark": { "primary": "#9684f5", "hover": "#aa9afa", "soft": "#2c284e" } },
+      "ocean":  { "light": { "primary": "#2f7df0", "hover": "#2569d4", "soft": "#e3edfd" }, "dark": { "primary": "#60a5fa", "hover": "#82b9ff", "soft": "#1a2a46" } },
+      "forest": { "light": { "primary": "#1f9d57", "hover": "#188048", "soft": "#e0f3e8" }, "dark": { "primary": "#4ac88c", "hover": "#68d7a2", "soft": "#143226" } },
+      "sunset": { "light": { "primary": "#c45120", "hover": "#a8421c", "soft": "#fdeae0" }, "dark": { "primary": "#f59266", "hover": "#faa882", "soft": "#3a241a" } },
+      "rose":   { "light": { "primary": "#e0457b", "hover": "#c8396b", "soft": "#fce4ed" }, "dark": { "primary": "#f07aa5", "hover": "#f592b8", "soft": "#3a1e2c" } },
+      "amber":  { "light": { "primary": "#a56e12", "hover": "#8a5c0e", "soft": "#faf0dc" }, "dark": { "primary": "#e0a93a", "hover": "#ebba5c", "soft": "#3a2e16" } }
+    }
+  },
+  "font": {
+    "heading": { "value": "Sora" },
+    "body": { "value": "Inter" },
+    "thai": { "value": "Noto Sans Thai" },
+    "mono": { "value": "JetBrains Mono" },
+    "size": {
+      "xs": "12px", "sm": "13px", "base": "14px", "md": "15px",
+      "lg": "18px", "xl": "22px", "2xl": "28px", "3xl": "36px"
+    },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700 },
+    "leading": { "tight": 1.2, "normal": 1.5, "relaxed": 1.7 }
+  },
+  "space": {
+    "$base": "4px",
+    "1": "4px", "2": "8px", "3": "12px", "4": "16px",
+    "5": "20px", "6": "24px", "8": "32px", "10": "40px", "12": "48px", "16": "64px"
+  },
+  "radius": { "sm": "8px", "DEFAULT": "14px", "lg": "14px", "xl": "18px", "pill": "999px" },
+  "shadow": {
+    "soft": "0 1px 2px rgb(29 35 51 / 0.04), 0 4px 16px rgb(29 35 51 / 0.06)",
+    "card": "0 1px 3px rgb(29 35 51 / 0.05), 0 6px 24px rgb(29 35 51 / 0.07)",
+    "pop": "0 8px 30px rgb(29 35 51 / 0.14)"
+  },
+  "motion": {
+    "fast": "120ms", "base": "200ms", "slow": "320ms",
+    "ease": "cubic-bezier(0.2, 0, 0, 1)",
+    "$reduced": "All durations collapse to 0ms under prefers-reduced-motion."
+  },
+  "a11y": {
+    "focus-ring": "0 0 0 3px rgb(109 91 208 / 0.45)",
+    "min-touch-target": "44px",
+    "contrast-target": "WCAG AA (>= 4.5:1 body, >= 3:1 large/UI)"
+  }
+}
