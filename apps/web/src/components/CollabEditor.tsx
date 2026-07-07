@@ -13,13 +13,17 @@
 //    successful sync, if the shared Yjs fragment is still empty we seed it once from
 //    `initialContent`. Guarded so it can never run twice (which would duplicate text).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { useEditor, EditorContent, BubbleMenu, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
 import TextStyle from '@tiptap/extension-text-style'
 import Color from '@tiptap/extension-color'
-import Image from '@tiptap/extension-image'
+import FontFamily from '@tiptap/extension-font-family'
 import TextAlign from '@tiptap/extension-text-align'
+import Table from '@tiptap/extension-table'
+import TableRow from '@tiptap/extension-table-row'
+import TableCell from '@tiptap/extension-table-cell'
+import TableHeader from '@tiptap/extension-table-header'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { HocuspocusProvider } from '@hocuspocus/provider'
@@ -28,6 +32,8 @@ import { cn } from '../lib/cn'
 import { Icon } from '../lib/icons'
 import { DrawingCanvas } from './DrawingCanvas'
 import { Box } from './editor/Box'
+import { FontSize } from './editor/FontSize'
+import { ResizableImage } from './editor/ResizableImage'
 import { migrateLegacyDrawings, svgToDataUrl } from './editor/drawing'
 
 const COLLAB_URL = import.meta.env.VITE_COLLAB_URL || 'ws://localhost:3002'
@@ -60,6 +66,8 @@ export interface CollabEditorProps {
   initialContent?: string
   /** Viewer role → non-editable on the client (the server also enforces read-only). */
   readOnly?: boolean
+  /** Page geometry (SPEC 1) — drives the A4 portrait/landscape surface size. */
+  orientation?: 'portrait' | 'landscape'
   /** Debounced HTML snapshot for the secondary `File.content` mirror + PDF export. */
   onChange?: (html: string) => void
   /** Identity for the live cursor / presence (Phase 4.3). */
@@ -111,8 +119,37 @@ const GROUPS: ToolButton[][] = [
   ],
 ]
 
+// SPEC 2 — Font pickers. Families are stored as inline `font-family`; the first entry
+// clears the override (falls back to the document's default body font).
+const FONT_FAMILIES = [
+  { label: 'ค่าเริ่มต้น', value: '' },
+  { label: 'Inter', value: 'Inter, sans-serif' },
+  { label: 'Sora', value: 'Sora, sans-serif' },
+  { label: 'Noto Sans Thai', value: '"Noto Sans Thai", sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", serif' },
+  { label: 'JetBrains Mono', value: '"JetBrains Mono", monospace' },
+]
+const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 36, 48, 72]
+
+// SPEC 4 — Table controls surfaced in a BubbleMenu when the caret is inside a table.
+// `can` gates actions that ProseMirror rejects out of context (merge needs a multi-cell
+// selection; split needs a merged cell) so the buttons disable instead of silently no-op.
+const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can?: (e: Editor) => boolean }[] = [
+  { key: 'colBefore', title: '+คอลัมน์ซ้าย', run: (e) => e.chain().focus().addColumnBefore().run() },
+  { key: 'colAfter', title: '+คอลัมน์ขวา', run: (e) => e.chain().focus().addColumnAfter().run() },
+  { key: 'delCol', title: 'ลบคอลัมน์', run: (e) => e.chain().focus().deleteColumn().run() },
+  { key: 'rowBefore', title: '+แถวบน', run: (e) => e.chain().focus().addRowBefore().run() },
+  { key: 'rowAfter', title: '+แถวล่าง', run: (e) => e.chain().focus().addRowAfter().run() },
+  { key: 'delRow', title: 'ลบแถว', run: (e) => e.chain().focus().deleteRow().run() },
+  { key: 'merge', title: 'รวมเซลล์', run: (e) => e.chain().focus().mergeCells().run(), can: (e) => e.can().mergeCells() },
+  { key: 'split', title: 'แยกเซลล์', run: (e) => e.chain().focus().splitCell().run(), can: (e) => e.can().splitCell() },
+  { key: 'header', title: 'สลับหัวแถว', run: (e) => e.chain().focus().toggleHeaderRow().run() },
+  { key: 'delTable', title: 'ลบตาราง', run: (e) => e.chain().focus().deleteTable().run() },
+]
+
 export function CollabEditor({
-  fileId, token, initialContent, readOnly, onChange, user, onPresenceChange, onStatusChange, onReady,
+  fileId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady,
 }: CollabEditorProps) {
   const fileRef = useRef<HTMLInputElement>(null)
   const seeded = useRef(false)
@@ -147,8 +184,16 @@ export function CollabEditor({
     Underline,
     TextStyle,
     Color,
-    Image.configure({ inline: false, allowBase64: true }),
+    FontFamily,
+    FontSize,
+    // SPEC 3 — resizable variant; same config surface as the stock Image extension.
+    ResizableImage.configure({ inline: false, allowBase64: true }),
     Box,
+    // resizable:false — column resize handles fight the Yjs sync and add little value here.
+    Table.configure({ resizable: false }),
+    TableRow,
+    TableHeader,
+    TableCell,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Collaboration.configure({ document: ydoc }),
     CollaborationCursor.configure({
@@ -162,7 +207,7 @@ export function CollabEditor({
     editable: !readOnly,
     editorProps: {
       attributes: {
-        class: 'tb-prose min-h-[60vh] w-full max-w-none text-[15px] leading-relaxed text-ink outline-none',
+        class: 'tb-prose text-[15px] leading-relaxed text-ink outline-none',
         role: 'textbox',
         'aria-multiline': 'true',
         'aria-label': 'พื้นที่แก้ไขเอกสาร',
@@ -271,6 +316,10 @@ export function CollabEditor({
     }).run()
   }, [editor])
 
+  const insertTable = useCallback(() => {
+    editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+  }, [editor])
+
   const insertDrawing = useCallback((svg: string) => {
     editor?.chain().focus().setImage({ src: svgToDataUrl(svg) }).run()
   }, [editor])
@@ -281,6 +330,39 @@ export function CollabEditor({
     <div className="flex flex-col">
       {!readOnly && (
         <div className="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-line bg-card p-1.5 shadow-soft">
+          {/* SPEC 2 — Font family + size. stopPropagation (not preventDefault) on mousedown:
+              a native <select> needs to take focus to open, unlike the toolbar buttons. */}
+          <div className="flex items-center gap-1.5">
+            <select
+              value={editor.getAttributes('textStyle').fontFamily ?? ''}
+              onChange={(e) => {
+                if (e.target.value) editor.chain().focus().setFontFamily(e.target.value).run()
+                else editor.chain().focus().unsetFontFamily().run()
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              title="แบบอักษร"
+              className="h-8 rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
+            >
+              {FONT_FAMILIES.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+            <select
+              value={(editor.getAttributes('textStyle').fontSize ?? '').replace('px', '')}
+              onChange={(e) => {
+                if (e.target.value) editor.chain().focus().setFontSize(`${e.target.value}px`).run()
+                else editor.chain().focus().unsetFontSize().run()
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              title="ขนาดอักษร"
+              className="h-8 w-[4.5rem] rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
+            >
+              <option value="">–</option>
+              {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <span className="mx-0.5 h-5 w-px bg-line" />
+          </div>
+
           {GROUPS.map((group, gi) => (
             <div key={gi} className="flex items-center gap-0.5">
               {gi > 0 && <span className="mx-1 h-5 w-px bg-line" />}
@@ -336,6 +418,13 @@ export function CollabEditor({
             >
               <Icon.box width={16} height={16} />
             </button>
+            <button
+              type="button" title="แทรกตาราง"
+              onMouseDown={(e) => e.preventDefault()} onClick={insertTable}
+              className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
+            >
+              <Icon.table width={16} height={16} />
+            </button>
           </div>
         </div>
       )}
@@ -343,7 +432,40 @@ export function CollabEditor({
       <input ref={fileRef} type="file" accept="image/*" hidden onChange={onImagePick} />
       <DrawingCanvas open={drawOpen} onClose={() => setDrawOpen(false)} onInsert={insertDrawing} />
 
-      <EditorContent editor={editor} />
+      {/* SPEC 4 — Table controls, shown only while the caret sits inside a table. */}
+      {!readOnly && (
+        <BubbleMenu
+          editor={editor}
+          shouldShow={({ editor }) => editor.isActive('table')}
+          tippyOptions={{ placement: 'top', duration: 100, zIndex: 20 }}
+          className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line bg-card p-1 shadow-soft"
+        >
+          {TABLE_ACTIONS.map((a) => {
+            const disabled = a.can ? !a.can(editor) : false
+            return (
+              <button
+                key={a.key}
+                type="button"
+                title={a.title}
+                disabled={disabled}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => a.run(editor)}
+                className={cn(
+                  'rounded px-1.5 py-1 text-[11px] font-medium text-muted hover:bg-ink/5 hover:text-ink',
+                  disabled && 'opacity-40 hover:bg-transparent',
+                )}
+              >
+                {a.title}
+              </button>
+            )
+          })}
+        </BubbleMenu>
+      )}
+
+      {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin. */}
+      <div className={cn('tb-page', orientation === 'landscape' ? 'tb-page--landscape' : 'tb-page--portrait')}>
+        <EditorContent editor={editor} />
+      </div>
     </div>
   )
 }

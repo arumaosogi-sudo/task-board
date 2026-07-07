@@ -131,6 +131,8 @@
     "pin": "Pin",
     "unpin": "Unpin",
     "optionsAria": "project options",
+    "openProject": "Open project",
+    "ownerLabel": "Owner:",
     "manageMembers": "Manage members / settings",
     "deleteProject": "Delete project",
     "noDescription": "No description",
@@ -145,9 +147,15 @@
     "descriptionPlaceholder": "Short description (optional)",
     "trashTitle": "Move Project to Trash?",
     "moveToTrash": "Move to Trash",
-    "trashBody": "“{{name}}” will be moved to Trash and can be restored within 30 days",
+    "trashBody": "“{{name}}” ({{count}} members) will be moved to Trash and can be restored within 30 days",
+    "inviteEmail": "Invite member (optional)",
+    "inviteEmailPlaceholder": "colleague@example.com",
+    "inviteWarnFailed": "Project created, but the invitation couldn't be sent. You can invite members later from Project settings.",
     "trashRestoreNote": "“{{name}}” can be restored from Trash within 30 days",
-    "deleteFailed": "Delete failed"
+    "deleteFailed": "Delete failed",
+    "leaveTitle": "Leave Project?",
+    "leaveBody": "You won't see “{{name}}” again until you're invited back",
+    "leaveFailed": "Failed to leave Project"
   },
   "projectCard": {
     "inviteMembers": "Invite members…",
@@ -170,6 +178,9 @@
     "createFileTitle": "Create a new file",
     "document": "Document",
     "folder": "Folder",
+    "orientation": "Orientation",
+    "portrait": "Portrait",
+    "landscape": "Landscape",
     "documentNamePlaceholder": "Document name",
     "folderNamePlaceholder": "Folder name",
     "deleteFileTitle": "Delete file?",
@@ -242,6 +253,26 @@
   },
   "diff": {
     "noChanges": "No changes"
+  },
+  "updates": {
+    "myTitle": "My Edits",
+    "mySubtitle": "Revisions you've saved across all your projects",
+    "changesTitle": "Changes",
+    "changesSubtitle": "Revisions from everyone in projects you belong to",
+    "range7d": "7 days",
+    "range30d": "30 days",
+    "rangeAll": "All",
+    "allProjects": "All projects",
+    "allPeople": "Everyone",
+    "scopeOwner": "Owner",
+    "scopeMember": "Collaborator",
+    "by": "By",
+    "openFile": "Open file",
+    "loadError": "Couldn't load updates. Check your connection and try again.",
+    "myEmptyTitle": "No edits yet",
+    "myEmptyBody": "Start editing a document and your saved revisions will show up here.",
+    "changesEmptyTitle": "No changes yet",
+    "changesEmptyBody": "When people edit documents in your projects, their revisions appear here."
   },
   "search": {
     "placeholder": "Search projects, files, or content…",

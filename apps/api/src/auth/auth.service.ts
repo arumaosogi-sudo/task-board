@@ -93,26 +93,105 @@ export class AuthService {
 
   async register(username: string, email: string, password: string): Promise<{ message: string }> {
     const normalizedEmail = email.toLowerCase()
-    const [byEmail, byUsername] = await Promise.all([
-      this.users.findByEmail(normalizedEmail),
-      this.users.findByUsername(username),
-    ])
-    if (byEmail) throw new ConflictException({ code: 'email-taken', message: 'อีเมลนี้ถูกใช้แล้ว' })
+    const byEmail = await this.users.findByEmail(normalizedEmail)
+
+    // Reclaim an unverified account instead of hard-blocking. If someone signed up
+    // but never verified (lost the email, gave up), a second signup with the same
+    // address is treated as "resend + reset password" rather than "email taken".
+    // Only a *verified* address is a real conflict. (Same pattern GitHub/Discord use.)
+    if (byEmail) {
+      if (byEmail.emailVerified) {
+        throw new ConflictException({ code: 'email-taken', message: 'อีเมลนี้ถูกใช้แล้ว' })
+      }
+      return this.reclaimUnverified(byEmail, username, password)
+    }
+
+    const byUsername = await this.users.findByUsername(username)
     if (byUsername) throw new ConflictException({ code: 'username-taken', message: 'Username นี้ถูกใช้แล้ว' })
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS)
-    const user = await this.users.create({ username, email: normalizedEmail, passwordHash })
+
+    let user: User
+    try {
+      user = await this.users.create({ username, email: normalizedEmail, passwordHash })
+    } catch (err) {
+      // Safety net for the race between the pre-check above and the insert: two
+      // concurrent signups with the same email/username both pass the check, then
+      // one hits the DB unique constraint (Prisma P2002). Map it to a clean 409
+      // instead of leaking a 500.
+      if (isUniqueConstraintError(err)) {
+        const target = err.meta?.target
+        const isEmail = Array.isArray(target)
+          ? target.includes('email')
+          : String(target ?? '').includes('email')
+        throw new ConflictException(
+          isEmail
+            ? { code: 'email-taken', message: 'อีเมลนี้ถูกใช้แล้ว' }
+            : { code: 'username-taken', message: 'Username นี้ถูกใช้แล้ว' },
+        )
+      }
+      throw err
+    }
 
     await this.sendVerification(user)
     return { message: 'verify-email-sent' }
   }
 
-  private async sendVerification(user: User): Promise<void> {
+  /**
+   * Re-registration against an existing but UNVERIFIED account. Validates the
+   * new username for availability, then stores the new credentials as PENDING
+   * inside the EmailVerification row. They are applied atomically only when the
+   * user clicks the link — so an attacker can never overwrite a victim's password
+   * before proving ownership of the email address.
+   */
+  private async reclaimUnverified(
+    existing: User,
+    username: string,
+    password: string,
+  ): Promise<{ message: string }> {
+    // Validate username now (before we write anything), but don't apply yet.
+    let pendingUsername: string | undefined
+    if (username && username !== existing.username) {
+      const taken = await this.users.findByUsername(username)
+      if (taken && taken.id !== existing.id) {
+        throw new ConflictException({ code: 'username-taken', message: 'Username นี้ถูกใช้แล้ว' })
+      }
+      pendingUsername = username
+    }
+
+    const pendingPasswordHash = await bcrypt.hash(password, BCRYPT_ROUNDS)
+
+    await this.prisma.emailVerification.deleteMany({ where: { userId: existing.id } })
+    // Email is unchanged, so `existing` still carries the right address/id for the mail.
+    await this.sendVerification(existing, { passwordHash: pendingPasswordHash, username: pendingUsername })
+    return { message: 'verification-resent' }
+  }
+
+  private async sendVerification(
+    user: User,
+    pending?: { passwordHash?: string; username?: string },
+  ): Promise<void> {
     const raw = generateOpaqueToken()
+    // The token row must be persisted before we respond (the verify link depends on
+    // it), so this stays awaited. The mail itself is fire-and-forget: SMTP latency or
+    // an outage must never block or fail registration — the user still lands on the
+    // "check your email" screen and can hit "resend" if the mail never arrives.
     await this.prisma.emailVerification.create({
-      data: { userId: user.id, token: hashToken(raw), expiresAt: new Date(Date.now() + EMAIL_VERIFY_TTL_MS) },
+      data: {
+        userId: user.id,
+        token: hashToken(raw),
+        expiresAt: new Date(Date.now() + EMAIL_VERIFY_TTL_MS),
+        ...(pending?.passwordHash && { pendingPasswordHash: pending.passwordHash }),
+        ...(pending?.username && { pendingUsername: pending.username }),
+      },
     })
-    await this.mail.sendVerificationEmail(user.email, raw)
+    void this.mail
+      .sendVerificationEmail(user.email, raw)
+      .catch((err) =>
+        this.logger.warn(
+          `Verification email failed for ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      )
   }
 
   /* -------------------------------- login --------------------------------- */
@@ -169,8 +248,12 @@ export class AuthService {
     if (!record || record.expiresAt < new Date()) {
       throw new BadRequestException({ code: 'invalid-token', message: 'ลิงก์ยืนยันไม่ถูกต้องหรือหมดอายุ' })
     }
+    // Apply any pending credentials from a reclaim attempt atomically with emailVerified.
+    const userPatch: { emailVerified: boolean; passwordHash?: string; username?: string } = { emailVerified: true }
+    if (record.pendingPasswordHash) userPatch.passwordHash = record.pendingPasswordHash
+    if (record.pendingUsername) userPatch.username = record.pendingUsername
     await this.prisma.$transaction([
-      this.prisma.user.update({ where: { id: record.userId }, data: { emailVerified: true } }),
+      this.prisma.user.update({ where: { id: record.userId }, data: userPatch }),
       this.prisma.emailVerification.deleteMany({ where: { userId: record.userId } }),
     ])
     return { message: 'email-verified' }
@@ -179,9 +262,14 @@ export class AuthService {
   async resendVerify(email: string): Promise<{ message: string }> {
     const user = await this.users.findByEmail(email)
     // Don't reveal whether the email exists; also no-op if already verified.
-    if (user && !user.emailVerified) {
+    if (!user) {
+      this.logger.debug(`resendVerify: no account for ${email} — no-op`)
+    } else if (user.emailVerified) {
+      this.logger.debug(`resendVerify: ${email} already verified — no-op`)
+    } else {
       await this.prisma.emailVerification.deleteMany({ where: { userId: user.id } })
       await this.sendVerification(user)
+      this.logger.log(`resendVerify: verification email queued for ${email}`)
     }
     return { message: 'verify-email-sent' }
   }
@@ -393,6 +481,17 @@ export class AuthService {
     ])
     return { message: 'account-deleted' }
   }
+}
+
+/** Narrows an unknown error to a Prisma unique-constraint violation (P2002). */
+function isUniqueConstraintError(
+  err: unknown,
+): err is { code: 'P2002'; meta?: { target?: string[] | string } } {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { code?: unknown }).code === 'P2002'
+  )
 }
 
 /** Parses durations like "15m", "30d", "12h", "45s" into milliseconds. */

@@ -1,10 +1,10 @@
 // /projects/:id/work — Phase 3 (complete): file tree + rich document editor
 // (text/format, image, freehand drawing w/ stylus, Box) + undo/redo + autosave + PDF export.
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
-import { Button, Card, Field, Input, Modal, Segmented } from '../components/ui'
+import { Button, Field, Input, Modal, Segmented } from '../components/ui'
 import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
 import { Icon } from '../lib/icons'
@@ -13,6 +13,7 @@ import { useAuth } from '../lib/auth'
 import { getFreshAccessToken } from '../lib/api'
 import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
+import { RevisionsApi } from '../lib/revisions'
 import {
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
   type FileKind, type FileNode,
@@ -25,6 +26,15 @@ const CollabEditor = lazy(() =>
 )
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+// Auto-snapshot: create a silent revision after the user pauses editing this long.
+const AUTO_SNAPSHOT_MS = 5 * 60 * 1000 // 5 minutes
+
+// Depth-first flatten of the file tree — used to resolve the `?file=` deep-link and
+// (potentially) any other id-based lookups without walking the nested structure by hand.
+function flattenTree(nodes: FileNode[]): FileNode[] {
+  return nodes.flatMap((n) => [n, ...flattenTree(n.children)])
+}
 
 function TreeItem({
   node, depth, selectedId, onSelect, onDelete, canEdit,
@@ -75,6 +85,8 @@ export default function WorkPage() {
   const { data: tree, isLoading: treeLoading } = useFileTree(id)
   const create = useCreateFile(id)
   const del = useDeleteFile(id)
+  const [searchParams] = useSearchParams()
+  const fileFromUrl = searchParams.get('file')
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data: doc } = useFile(id, selectedId)
@@ -85,6 +97,7 @@ export default function WorkPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newKind, setNewKind] = useState<FileKind>('Document')
+  const [newOrientation, setNewOrientation] = useState<'portrait' | 'landscape'>('portrait')
   const [toDelete, setToDelete] = useState<FileNode | null>(null)
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -93,6 +106,28 @@ export default function WorkPage() {
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const loadedDocId = useRef<string | null>(null)
+
+  // Auto-snapshot bookkeeping. `lastSnapshotContent` tracks the HTML of the most recent
+  // snapshot (seeded from the loaded doc) so we never persist a duplicate; the timer is
+  // debounced on every keystroke and flushed on file switch / unmount.
+  const lastSnapshotContent = useRef<string>('')
+  const autoSnapshotTimer = useRef<ReturnType<typeof setTimeout>>()
+  // Latest values captured in refs so the unmount/file-switch flush (whose effect has to
+  // run its cleanup with a stable closure) always sees current content and permissions.
+  const contentRef = useRef('')
+  const canEditRef = useRef(false)
+  contentRef.current = content
+  canEditRef.current = !!canEdit
+
+  // Fire-and-forget snapshot: silent, non-blocking, and de-duplicated. Skips empty bodies,
+  // viewers, and content identical to the last snapshot to keep the revision feed clean.
+  const takeSnapshot = useCallback((projectId: string, fileId: string, html: string) => {
+    if (!canEditRef.current) return
+    const trimmed = html.trim()
+    if (trimmed === '' || html === lastSnapshotContent.current) return
+    lastSnapshotContent.current = html
+    RevisionsApi.create(projectId, fileId, { content: html }).catch(() => undefined)
+  }, [])
 
   // Access JWT getter for the WS handshake. Async so a token that expired while the
   // socket was down is refreshed *before* the reconnect handshake (Hocuspocus awaits
@@ -119,7 +154,12 @@ export default function WorkPage() {
 
   // Sync local content when a different document loads; reset per-doc collab state.
   useEffect(() => {
-    if (doc) { setContent(doc.content); loadedDocId.current = doc.id; setStatus('idle') }
+    if (doc) {
+      setContent(doc.content); loadedDocId.current = doc.id; setStatus('idle')
+      // Baseline the auto-snapshot against the just-loaded content so we never take a
+      // redundant snapshot of an unchanged document.
+      lastSnapshotContent.current = doc.content
+    }
     setPresence([]); setConnStatus('connecting')
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,6 +174,43 @@ export default function WorkPage() {
     }, 800)
     return () => clearTimeout(t)
   }, [content]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-snapshot (debounced 5 min): after the user stops typing, silently persist a
+  // revision so the "My Updates" / "Project Changes" feeds have history without the user
+  // manually saving versions. Guards mirror takeSnapshot (no empty / no-op / viewer).
+  useEffect(() => {
+    if (!selectedId || !doc || doc.id !== loadedDocId.current) return
+    if (!canEdit) return
+    if (content.trim() === '' || content === lastSnapshotContent.current) return
+    const pid = id
+    const fid = doc.id
+    clearTimeout(autoSnapshotTimer.current)
+    autoSnapshotTimer.current = setTimeout(() => takeSnapshot(pid, fid, content), AUTO_SNAPSHOT_MS)
+    return () => clearTimeout(autoSnapshotTimer.current)
+  }, [content]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush a snapshot immediately when switching files / unmounting, so a pending debounce
+  // isn't lost. Reads live content from the ref; takeSnapshot de-dupes against the last one.
+  useEffect(() => {
+    if (!doc) return
+    const pid = id
+    const fid = doc.id
+    return () => {
+      clearTimeout(autoSnapshotTimer.current)
+      takeSnapshot(pid, fid, contentRef.current)
+    }
+  }, [doc?.id, id, takeSnapshot]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Deep-link support (?file=<id>): auto-select the referenced document once the tree is
+  // loaded. Applied once per distinct id so background tree refetches don't yank the user
+  // back to the linked file after they've navigated elsewhere.
+  const appliedFileLink = useRef<string | null>(null)
+  useEffect(() => {
+    if (!fileFromUrl || !tree) return
+    if (appliedFileLink.current === fileFromUrl) return
+    const found = flattenTree(tree).find((n) => n.id === fileFromUrl && n.kind === 'Document')
+    if (found) { appliedFileLink.current = fileFromUrl; setSelectedId(found.id) }
+  }, [fileFromUrl, tree])
 
   // Dependency-free PDF export: open the document in a print window → "Save as PDF".
   function exportPdf() {
@@ -157,8 +234,14 @@ export default function WorkPage() {
   async function submitCreate() {
     if (!newName.trim()) return
     try {
-      const created = await create.mutateAsync({ name: newName.trim(), kind: newKind, parentId: null })
-      setCreateOpen(false); setNewName('')
+      const created = await create.mutateAsync({
+        name: newName.trim(),
+        kind: newKind,
+        parentId: null,
+        // Orientation only applies to documents; folders carry no page geometry.
+        ...(newKind === 'Document' && { orientation: newOrientation }),
+      })
+      setCreateOpen(false); setNewName(''); setNewOrientation('portrait')
       if (created.kind === 'Document') setSelectedId(created.id)
     } catch { /* surfaced below via banner-less inline; keep simple */ }
   }
@@ -188,7 +271,7 @@ export default function WorkPage() {
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
             {canEdit && (
-              <button onClick={() => { setCreateOpen(true); setNewKind('Document') }}
+              <button onClick={() => { setCreateOpen(true); setNewKind('Document'); setNewOrientation('portrait') }}
                 className="grid size-7 place-items-center rounded-lg text-primary hover:bg-primary-soft" aria-label={t('work.createFile')}>
                 <Icon.plus width={16} height={16} />
               </button>
@@ -258,7 +341,8 @@ export default function WorkPage() {
                 </button>
               </div>
               <div className="min-h-0 flex-1 overflow-auto bg-ink/[0.02] p-6">
-                <Card className="mx-auto max-w-3xl p-8 sm:p-10">
+                {/* SPEC 1 — width-fit wrapper so the A4 page surface centers without a Card frame. */}
+                <div className="mx-auto w-fit">
                   <Suspense fallback={
                     <div className="grid place-items-center py-16">
                       <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -269,6 +353,7 @@ export default function WorkPage() {
                       fileId={doc.id}
                       token={getToken}
                       initialContent={doc.content}
+                      orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
                       readOnly={!canEdit}
                       onChange={setContent}
                       user={collabUser}
@@ -277,7 +362,7 @@ export default function WorkPage() {
                       onReady={handleReady}
                     />
                   </Suspense>
-                </Card>
+                </div>
               </div>
             </>
           )}
@@ -318,6 +403,13 @@ export default function WorkPage() {
               placeholder={newKind === 'Folder' ? t('work.folderNamePlaceholder') : t('work.documentNamePlaceholder')} autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') submitCreate() }} />
           </Field>
+          {/* Page orientation is document-only; folders have no page geometry. */}
+          {newKind === 'Document' && (
+            <Field label={t('work.orientation')}>
+              <Segmented value={newOrientation} onChange={setNewOrientation}
+                options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
+            </Field>
+          )}
         </div>
       </Modal>
 

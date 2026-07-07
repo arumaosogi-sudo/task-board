@@ -13,7 +13,7 @@ import { setLanguage, type Language } from '../i18n'
 import {
   useChangePassword, useDeleteAccount, useUpdateProfile, useUpdateSetting,
 } from '../lib/account'
-import type { ThemeId, Mode } from '../lib/cn'
+import type { Mode, ThemeId } from '../lib/cn'
 
 type NotifyKey = 'notifyInvite' | 'notifyMention' | 'notifyRevision'
 

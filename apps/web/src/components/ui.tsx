@@ -4,7 +4,13 @@ import {
 } from 'react'
 import { cn } from '../lib/cn'
 import { Icon } from '../lib/icons'
-import { presenceColors } from '../data/mock'
+
+// Presence color palette — keyed by a short presence id (A–F). Co-located with
+// Avatar (its only consumer) so the UI kit stays self-contained. Reused by the
+// real-time collaboration presence indicators.
+const presenceColors: Record<string, string> = {
+  A: '#f08a8a', B: '#e9c46a', C: '#82d178', D: '#5fc9d6', E: '#6d5bd0', F: '#e08ad0',
+}
 
 /* ----------------------------------- Button ---------------------------------- */
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'google'
@@ -91,8 +97,12 @@ export function Input({
   )
 }
 
-export function PasswordInput(props: InputHTMLAttributes<HTMLInputElement> & { state?: FieldState }) {
+export function PasswordInput({
+  showToggle = true, ...props
+}: InputHTMLAttributes<HTMLInputElement> & { state?: FieldState; showToggle?: boolean }) {
   const [show, setShow] = useState(false)
+  // When the toggle is hidden, render a plain password input with no eye button.
+  if (!showToggle) return <Input {...props} type="password" />
   return (
     <Input
       {...props}

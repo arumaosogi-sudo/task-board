@@ -131,6 +131,8 @@
     "pin": "ปักหมุด",
     "unpin": "เลิกปักหมุด",
     "optionsAria": "ตัวเลือก project",
+    "openProject": "เปิด project",
+    "ownerLabel": "เจ้าของ:",
     "manageMembers": "จัดการสมาชิก / ตั้งค่า",
     "deleteProject": "ลบ project",
     "noDescription": "ไม่มีคำอธิบาย",
@@ -145,9 +147,15 @@
     "descriptionPlaceholder": "รายละเอียดสั้น ๆ (ไม่บังคับ)",
     "trashTitle": "ย้าย Project ไปถังขยะ?",
     "moveToTrash": "ย้ายไปถังขยะ",
-    "trashBody": "“{{name}}” จะถูกย้ายไปถังขยะ และกู้คืนได้ภายใน 30 วัน",
+    "trashBody": "“{{name}}” (สมาชิก {{count}} คน) จะถูกย้ายไปถังขยะ และกู้คืนได้ภายใน 30 วัน",
+    "inviteEmail": "เชิญสมาชิก (ไม่บังคับ)",
+    "inviteEmailPlaceholder": "อีเมลของเพื่อนร่วมงาน",
+    "inviteWarnFailed": "สร้าง Project สำเร็จ แต่ส่งคำเชิญไม่สำเร็จ คุณสามารถเชิญสมาชิกได้ภายหลังในหน้าตั้งค่า Project",
     "trashRestoreNote": "“{{name}}” จะกู้คืนได้ภายใน 30 วันจากถังขยะ",
-    "deleteFailed": "ลบไม่สำเร็จ"
+    "deleteFailed": "ลบไม่สำเร็จ",
+    "leaveTitle": "ออกจาก Project?",
+    "leaveBody": "จะไม่เห็น “{{name}}” อีกจนกว่าจะได้รับเชิญใหม่",
+    "leaveFailed": "ออกจาก Project ไม่สำเร็จ"
   },
   "projectCard": {
     "inviteMembers": "เชิญสมาชิก…",
@@ -170,6 +178,9 @@
     "createFileTitle": "สร้างไฟล์ใหม่",
     "document": "เอกสาร",
     "folder": "โฟลเดอร์",
+    "orientation": "แนวกระดาษ",
+    "portrait": "แนวตั้ง",
+    "landscape": "แนวนอน",
     "documentNamePlaceholder": "ชื่อเอกสาร",
     "folderNamePlaceholder": "ชื่อโฟลเดอร์",
     "deleteFileTitle": "ลบไฟล์?",
@@ -242,6 +253,26 @@
   },
   "diff": {
     "noChanges": "ไม่มีการเปลี่ยนแปลง"
+  },
+  "updates": {
+    "myTitle": "สิ่งที่ฉันแก้",
+    "mySubtitle": "เวอร์ชันที่คุณบันทึกไว้จากทุก project",
+    "changesTitle": "ความเปลี่ยนแปลง",
+    "changesSubtitle": "เวอร์ชันจากทุกคนใน project ที่คุณเป็นสมาชิก",
+    "range7d": "7 วัน",
+    "range30d": "30 วัน",
+    "rangeAll": "ทั้งหมด",
+    "allProjects": "ทุก project",
+    "allPeople": "ทุกคน",
+    "scopeOwner": "เจ้าของ",
+    "scopeMember": "ผู้ร่วมงาน",
+    "by": "โดย",
+    "openFile": "เปิดไฟล์",
+    "loadError": "โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง",
+    "myEmptyTitle": "ยังไม่มีการแก้ไขของคุณ",
+    "myEmptyBody": "เริ่มแก้ไขเอกสารแล้วประวัติการเปลี่ยนแปลงของคุณจะมาแสดงที่นี่",
+    "changesEmptyTitle": "ยังไม่มีการเปลี่ยนแปลง",
+    "changesEmptyBody": "เมื่อมีคนแก้ไขเอกสารใน project ของคุณ การเปลี่ยนแปลงจะปรากฏที่นี่"
   },
   "search": {
     "placeholder": "ค้นหา project, ไฟล์ หรือเนื้อหา…",

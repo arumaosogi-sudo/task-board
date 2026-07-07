@@ -2,22 +2,19 @@ export function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
+export type Mode = 'light' | 'dark'
+
+/** Accent colors. `swatch` = light-mode preview, `swatchDark` = dark-mode preview. */
 export const THEMES = [
-  { id: 'violet', label: 'Violet', swatch: '#6d5bd0', swatchDark: '#9684f5' },
-  { id: 'ocean', label: 'Ocean', swatch: '#2f7df0', swatchDark: '#60a5fa' },
-  { id: 'forest', label: 'Forest', swatch: '#1f9d57', swatchDark: '#4ac88c' },
-  { id: 'sunset', label: 'Sunset', swatch: '#c55120', swatchDark: '#f59266' },
-  { id: 'rose', label: 'Rose', swatch: '#e0457b', swatchDark: '#f07aa5' },
-  { id: 'amber', label: 'Amber', swatch: '#a56e12', swatchDark: '#e0a93a' },
+  { id: 'violet', label: 'Violet', swatch: '#6a58ca', swatchDark: '#9684f5' },
+  { id: 'ocean',  label: 'Ocean',  swatch: '#2768c7', swatchDark: '#60a5fa' },
+  { id: 'forest', label: 'Forest', swatch: '#187c45', swatchDark: '#4ac88c' },
+  { id: 'sunset', label: 'Sunset', swatch: '#b54b1d', swatchDark: '#f59266' },
+  { id: 'rose',   label: 'Rose',   swatch: '#ba3966', swatchDark: '#f07aa5' },
+  { id: 'amber',  label: 'Amber',  swatch: '#956310', swatchDark: '#e0a93a' },
 ] as const
 
 export type ThemeId = (typeof THEMES)[number]['id']
-export type Mode = 'light' | 'dark'
-
-export function applyTheme(id: ThemeId) {
-  document.documentElement.setAttribute('data-theme', id)
-  try { localStorage.setItem('tb-theme', id) } catch { /* ignore */ }
-}
 
 export function applyMode(mode: Mode) {
   document.documentElement.setAttribute('data-mode', mode)
@@ -26,6 +23,16 @@ export function applyMode(mode: Mode) {
 
 export function getMode(): Mode {
   return (document.documentElement.getAttribute('data-mode') as Mode) || 'light'
+}
+
+export function applyTheme(id: ThemeId) {
+  document.documentElement.setAttribute('data-theme', id)
+  try { localStorage.setItem('tb-theme', id) } catch { /* ignore */ }
+}
+
+export function getTheme(): ThemeId {
+  const t = document.documentElement.getAttribute('data-theme') as ThemeId | null
+  return t && THEMES.some((x) => x.id === t) ? t : 'violet'
 }
 
 export function initTheme(): { theme: ThemeId; mode: Mode } {

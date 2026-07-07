@@ -65,11 +65,13 @@ function TokenVerify({ token }: { token: string }) {
   )
 }
 
-function VerifyPending({ email }: { email: string }) {
+function VerifyPending({ email, initialResent = false }: { email: string; initialResent?: boolean }) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [countdown, setCountdown] = useState(60)
-  const [resent, setResent] = useState(false)
+  // Seed as "resent" when we arrived here by reclaiming an unverified account, so
+  // the user gets immediate confirmation the link was sent to an already-known email.
+  const [resent, setResent] = useState(initialResent)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -90,7 +92,9 @@ function VerifyPending({ email }: { email: string }) {
       setCountdown(60)
       setTimeout(() => setResent(false), 3000)
     } catch (err) {
-      setError(apiError(err).message || t('auth.sendEmailFailed'))
+      const e = apiError(err)
+      // 429 = throttled; surface a friendlier message than the raw API error
+      setError(e.status === 429 ? t('auth.resendInBtn', { count: 60 }) : (e.message || t('auth.sendEmailFailed')))
     }
   }
 
@@ -126,6 +130,7 @@ function VerifyPending({ email }: { email: string }) {
             <Button variant="secondary" full disabled={countdown > 0} onClick={handleResend}>
               {countdown > 0 ? t('auth.resendInBtn', { count: countdown }) : t('auth.resendVerifyEmail')}
             </Button>
+            <p className="text-[12px] text-muted">{t('auth.noEmailSpam')}</p>
             <p className="text-[12px] text-muted">
               {t('auth.wrongEmail')} <Link to="/signup" className="font-medium text-primary hover:underline">{t('auth.changeEmail')}</Link>
             </p>
@@ -142,7 +147,22 @@ export default function EmailVerify() {
   const [params] = useSearchParams()
   const location = useLocation()
   const token = params.get('token')
-  const email = (location.state as { email?: string } | null)?.email ?? ''
 
-  return token ? <TokenVerify token={token} /> : <VerifyPending email={email} />
+  const navState = location.state as { email?: string; resent?: boolean } | null
+
+  // Persist email so Resend still works after a page refresh (location.state is cleared)
+  const stateEmail = navState?.email
+  const email = (() => {
+    if (stateEmail) {
+      sessionStorage.setItem('verify_email', stateEmail)
+      return stateEmail
+    }
+    return sessionStorage.getItem('verify_email') ?? ''
+  })()
+
+  return token ? (
+    <TokenVerify token={token} />
+  ) : (
+    <VerifyPending email={email} initialResent={navState?.resent ?? false} />
+  )
 }

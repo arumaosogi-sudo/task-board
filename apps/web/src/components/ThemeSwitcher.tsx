@@ -1,16 +1,6 @@
 import { useState } from 'react'
-import { THEMES, applyTheme, applyMode, getMode, type ThemeId, type Mode } from '../lib/cn'
+import { applyMode, applyTheme, getMode, getTheme, THEMES, type Mode, type ThemeId } from '../lib/cn'
 import { cn } from '../lib/cn'
-
-function useThemeState(onChange?: (theme: ThemeId, mode: Mode) => void) {
-  const [active, setActive] = useState<ThemeId>(
-    (document.documentElement.getAttribute('data-theme') as ThemeId) || 'violet',
-  )
-  const [mode, setMode] = useState<Mode>(getMode())
-  const pick = (id: ThemeId) => { setActive(id); applyTheme(id); onChange?.(id, mode) }
-  const toggle = (m: Mode) => { setMode(m); applyMode(m); onChange?.(active, m) }
-  return { active, mode, pick, toggle }
-}
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
   return (
@@ -26,32 +16,54 @@ function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => voi
   )
 }
 
+function ColorSwatches({
+  theme, mode, onChange,
+}: { theme: ThemeId; mode: Mode; onChange: (id: ThemeId) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      {THEMES.map((c) => {
+        const color = mode === 'dark' ? c.swatchDark : c.swatch
+        const active = theme === c.id
+        return (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => onChange(c.id)}
+            title={c.label}
+            aria-label={c.label}
+            aria-pressed={active}
+            className={cn(
+              'size-6 rounded-full border transition',
+              active ? 'ring-2 ring-primary ring-offset-2 ring-offset-card border-transparent' : 'border-line hover:scale-110',
+            )}
+            style={{ backgroundColor: color }}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 export function ThemeSwitcher({
-  inline,
   onChange,
+  inline = false,
 }: {
-  inline?: boolean
-  /** Fired after a theme/mode change — used to persist the choice server-side. */
+  /** Persist callback — fired with the full theme selection after any change. */
   onChange?: (theme: ThemeId, mode: Mode) => void
+  /** `inline` renders a compact horizontal row (e.g. in a header/menu). */
+  inline?: boolean
 }) {
-  const { active, mode, pick, toggle } = useThemeState(onChange)
-  const swatch = (t: (typeof THEMES)[number]) => (mode === 'dark' ? t.swatchDark : t.swatch)
+  const [theme, setTheme] = useState<ThemeId>(getTheme())
+  const [mode, setMode] = useState<Mode>(getMode())
+
+  const pickTheme = (id: ThemeId) => { setTheme(id); applyTheme(id); onChange?.(id, mode) }
+  const pickMode = (m: Mode) => { setMode(m); applyMode(m); onChange?.(theme, m) }
 
   if (inline) {
     return (
-      <div className="space-y-2 px-2.5 py-2">
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-medium uppercase tracking-wide text-subtle">ธีมสี</p>
-          <ModeToggle mode={mode} onChange={toggle} />
-        </div>
-        <div className="flex gap-1.5">
-          {THEMES.map((t) => (
-            <button key={t.id} onClick={() => pick(t.id)} aria-label={t.label} title={t.label}
-              className={cn('size-6 rounded-full ring-2 ring-offset-2 ring-offset-card transition',
-                active === t.id ? 'ring-primary' : 'ring-transparent hover:ring-line')}
-              style={{ background: swatch(t) }} />
-          ))}
-        </div>
+      <div className="flex items-center gap-3">
+        <ColorSwatches theme={theme} mode={mode} onChange={pickTheme} />
+        <ModeToggle mode={mode} onChange={pickMode} />
       </div>
     )
   }
@@ -59,19 +71,12 @@ export function ThemeSwitcher({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-ink">โหมดการแสดงผล</p>
-        <ModeToggle mode={mode} onChange={toggle} />
+        <p className="text-sm font-medium text-ink">สีธีม</p>
+        <ColorSwatches theme={theme} mode={mode} onChange={pickTheme} />
       </div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-        {THEMES.map((t) => (
-          <button key={t.id} onClick={() => pick(t.id)}
-            className={cn('flex items-center gap-3 rounded-xl border p-3 text-left transition',
-              active === t.id ? 'border-primary bg-primary-soft/50' : 'border-line hover:bg-paper')}>
-            <span className="size-7 rounded-full shadow-soft" style={{ background: swatch(t) }} />
-            <span className="text-sm font-medium text-ink">{t.label}</span>
-            {active === t.id && <span className="ml-auto text-primary">●</span>}
-          </button>
-        ))}
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-medium text-ink">โหมดการแสดงผล</p>
+        <ModeToggle mode={mode} onChange={pickMode} />
       </div>
     </div>
   )

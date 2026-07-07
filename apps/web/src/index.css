@@ -35,6 +35,14 @@
   --c-primary-soft: 236 233 251;
 }
 
+/* ---- Accent per color: LIGHT ---- */
+html[data-theme='violet'] { --c-primary: 106 88 202; --c-primary-hover: 91 76 174;  --c-primary-soft: 236 233 251; }
+html[data-theme='ocean']  { --c-primary: 39 104 199; --c-primary-hover: 34 89 171;  --c-primary-soft: 227 237 253; }
+html[data-theme='forest'] { --c-primary: 24 124 69;  --c-primary-hover: 21 107 59;  --c-primary-soft: 224 243 232; }
+html[data-theme='sunset'] { --c-primary: 181 75 29;  --c-primary-hover: 156 65 25;  --c-primary-soft: 253 234 224; }
+html[data-theme='rose']   { --c-primary: 186 57 102; --c-primary-hover: 160 49 88;  --c-primary-soft: 252 228 237; }
+html[data-theme='amber']  { --c-primary: 149 99 16;  --c-primary-hover: 128 85 14;  --c-primary-soft: 250 240 220; }
+
 /* ---- Surfaces: DARK ---- */
 html[data-mode='dark'] {
   --c-primary-fg: 16 20 30;
@@ -53,17 +61,13 @@ html[data-mode='dark'] {
   --c-success: 134 224 168;
   --c-warn: 232 186 96;
   --c-danger: 244 146 138;
+  /* default accent = violet dark */
+  --c-primary: 150 132 245;
+  --c-primary-hover: 170 154 250;
+  --c-primary-soft: 44 40 78;
 }
 
-/* ---- Accent per COLOR (light) ---- */
-html[data-theme='violet'] { --c-primary: 106 88 202;  --c-primary-hover: 91 76 174;   --c-primary-soft: 236 233 251; }
-html[data-theme='ocean']  { --c-primary: 39 104 199;  --c-primary-hover: 34 89 171;   --c-primary-soft: 227 237 253; }
-html[data-theme='forest'] { --c-primary: 24 124 69;   --c-primary-hover: 21 107 59;   --c-primary-soft: 224 243 232; }
-html[data-theme='sunset'] { --c-primary: 181 75 29;   --c-primary-hover: 156 65 25;   --c-primary-soft: 253 234 224; }
-html[data-theme='rose']   { --c-primary: 186 57 102;  --c-primary-hover: 160 49 88;   --c-primary-soft: 252 228 237; }
-html[data-theme='amber']  { --c-primary: 149 99 16;   --c-primary-hover: 128 85 14;   --c-primary-soft: 250 240 220; }
-
-/* ---- Accent per COLOR (dark) ---- */
+/* ---- Accent per color: DARK ---- */
 html[data-theme='violet'][data-mode='dark'] { --c-primary: 150 132 245; --c-primary-hover: 170 154 250; --c-primary-soft: 44 40 78; }
 html[data-theme='ocean'][data-mode='dark']  { --c-primary: 96 165 250;  --c-primary-hover: 130 185 255; --c-primary-soft: 26 42 70; }
 html[data-theme='forest'][data-mode='dark'] { --c-primary: 74 200 140;  --c-primary-hover: 104 215 162; --c-primary-soft: 20 50 38; }
@@ -122,6 +126,18 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-prose a { @apply text-primary underline; }
 .tb-prose img { @apply my-2 max-w-full rounded-lg; }
 .tb-prose svg.tb-drawing { @apply my-2 block; }
+
+/* Tables (Phase 6, TipTap Table extension). Theme tokens keep them on-brand in both modes. */
+.tb-prose table { @apply my-4 w-full border-collapse; }
+.tb-prose th,
+.tb-prose td { @apply border border-line px-2.5 py-1.5 text-left align-top; }
+.tb-prose th { @apply bg-card font-semibold; }
+/* Cell selection highlight while dragging across a table. */
+.tb-prose .selectedCell::after {
+  content: '';
+  @apply pointer-events-none absolute inset-0 bg-primary/15;
+}
+.tb-prose td, .tb-prose th { @apply relative; }
 .tb-box { @apply my-3 rounded-xl border-l-4 border-primary bg-primary-soft/50 px-4 py-3; }
 
 /* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
@@ -130,6 +146,41 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 /* Text alignment (TipTap TextAlign writes inline text-align; keep block flow intact). */
 .tb-prose [style*='text-align:center'] { text-align: center; }
 .tb-prose [style*='text-align:right'] { text-align: right; }
+
+/* ---- A4 page surface (SPEC 1) ---- */
+/* The editable content sits on a physical-size white page. Padding is the 1-inch page
+   margin (96px @ 96dpi). Text is forced dark so the page stays readable in dark mode. */
+.tb-page {
+  background: #fff;
+  margin: 0 auto;
+  padding: 96px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 12px 40px rgb(0 0 0 / 0.18);
+  border-radius: 2px;
+}
+.tb-page--portrait  { width: 794px;  min-height: 1123px; }
+.tb-page--landscape { width: 1123px; min-height: 794px;  }
+.tb-page .tb-prose  { color: #1d2333; }
+
+@media (max-width: 900px) {
+  .tb-page { padding: 48px; }
+}
+
+/* ---- Resizable image (SPEC 3) ---- */
+.tb-img-wrap { position: relative; display: inline-block; line-height: 0; }
+.tb-img-wrap img { max-width: 100%; border-radius: 8px; }
+.tb-img-wrap[data-selected='true'] img { outline: 2px solid #7c5cff; }
+.tb-img-handle {
+  position: absolute;
+  right: -6px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  background: #7c5cff;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  cursor: nwse-resize;
+  touch-action: none;
+}
 
 /* ---- Live collaboration cursors (Phase 4.3, CollaborationCursor) ---- */
 /* Caret border + label background come from each peer's inline color (see presence.ts). */

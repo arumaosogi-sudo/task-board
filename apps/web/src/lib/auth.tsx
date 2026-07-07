@@ -4,7 +4,7 @@ import { api, bootstrapSession, setAccessToken } from './api'
 import { applyMode, applyTheme, type Mode, type ThemeId } from './cn'
 import { setLanguage, type Language } from '../i18n'
 
-/** Apply a user's saved preferences (theme + language) to the document. */
+/** Apply a user's saved preferences (color + mode + language) to the document. */
 function applyUserSetting(setting?: UserSetting | null): void {
   if (!setting) return
   applyTheme(setting.themeColor as ThemeId)

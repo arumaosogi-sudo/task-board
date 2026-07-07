@@ -12,6 +12,7 @@ import { FilesModule } from './files/files.module'
 import { CollabModule } from './collab/collab.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { SearchModule } from './search/search.module'
+import { UpdatesModule } from './updates/updates.module'
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { SearchModule } from './search/search.module'
     CollabModule,
     NotificationsModule,
     SearchModule,
+    UpdatesModule,
   ],
   controllers: [AppController],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],

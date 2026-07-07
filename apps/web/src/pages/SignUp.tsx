@@ -62,8 +62,14 @@ export default function SignUp() {
     if (!canSubmit) return
     setLoading(true)
     try {
-      await api.post('/auth/register', { username, email, password })
-      navigate('/verify-email', { state: { email } })
+      // Two happy paths, both land on the "check your email" screen:
+      //  - 'verify-email-sent'   → brand-new account
+      //  - 'verification-resent' → reclaimed an existing UNVERIFIED account
+      //    (backend resent the link + reset the password instead of erroring).
+      const res = await api.post<{ message: string }>('/auth/register', { username, email, password })
+      navigate('/verify-email', {
+        state: { email, resent: res.data.message === 'verification-resent' },
+      })
     } catch (err) {
       const { message, code } = apiError(err)
       if (code === 'username-taken') setUname('taken')
@@ -85,10 +91,10 @@ export default function SignUp() {
             <Input id="em" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required />
           </Field>
           <Field label={t('auth.password')} htmlFor="pw" hint={t('auth.passwordHint')}>
-            <PasswordInput id="pw" placeholder={t('auth.passwordCreatePlaceholder')} value={password} onChange={(e) => setPassword(e.target.value)} required />
+            <PasswordInput id="pw" showToggle={false} placeholder={t('auth.passwordCreatePlaceholder')} value={password} onChange={(e) => setPassword(e.target.value)} required />
           </Field>
           <Field label={t('auth.confirmPassword')} htmlFor="pw2" error={mismatch ? t('auth.passwordMismatch') : undefined}>
-            <PasswordInput id="pw2" placeholder={t('auth.confirmPasswordPlaceholder')} value={confirm} onChange={(e) => setConfirm(e.target.value)}
+            <PasswordInput id="pw2" showToggle={false} placeholder={t('auth.confirmPasswordPlaceholder')} value={confirm} onChange={(e) => setConfirm(e.target.value)}
               state={mismatch ? 'error' : 'default'} required />
           </Field>
           <Field label={t('auth.username')} htmlFor="un">

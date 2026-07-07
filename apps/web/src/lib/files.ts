@@ -58,7 +58,7 @@ export function useFile(projectId: string, fileId: string | null) {
 export function useCreateFile(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: (body: { name: string; kind: FileKind; parentId?: string | null }) => FilesApi.create(projectId, body),
+    mutationFn: (body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape' }) => FilesApi.create(projectId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) }),
   })
 }

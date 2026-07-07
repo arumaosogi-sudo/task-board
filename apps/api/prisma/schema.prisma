@@ -74,6 +74,9 @@ model EmailVerification {
   token     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
+  // Pending credential overrides from a reclaim attempt — applied atomically on verify.
+  pendingPasswordHash String?
+  pendingUsername     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

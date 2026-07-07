@@ -53,7 +53,20 @@
       "Bash(ls apps/web/src)",
       "Bash(ls apps/api/src)",
       "Bash(ls apps/web/src/locales)",
-      "PowerShell($th = \\(Get-Content 'C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\locales\\\\th.json' -Raw | ConvertFrom-Json\\); $en = \\(Get-Content 'C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\locales\\\\en.json' -Raw | ConvertFrom-Json\\); function Count\\($o\\){ $n=0; foreach\\($p in $o.PSObject.Properties\\){ if\\($p.Value -is [PSCustomObject]\\){ $n += Count $p.Value } else { $n++ } }; $n }; \"TH keys: $\\(Count $th\\)\"; \"EN keys: $\\(Count $en\\)\")"
+      "PowerShell($th = \\(Get-Content 'C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\locales\\\\th.json' -Raw | ConvertFrom-Json\\); $en = \\(Get-Content 'C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\locales\\\\en.json' -Raw | ConvertFrom-Json\\); function Count\\($o\\){ $n=0; foreach\\($p in $o.PSObject.Properties\\){ if\\($p.Value -is [PSCustomObject]\\){ $n += Count $p.Value } else { $n++ } }; $n }; \"TH keys: $\\(Count $th\\)\"; \"EN keys: $\\(Count $en\\)\")",
+      "PowerShell(\\(Get-Item \"apps\\\\web\\\\src\\\\components\\\\ui.tsx\"\\).FullName; \"---\"; \\(Get-Item \"apps\\\\api\\\\.env\"\\).FullName)",
+      "PowerShell(Get-Content \"apps\\\\api\\\\.env\" -Encoding utf8 | Where-Object { $_ -match 'SMTP|EMAIL|RESEND|WEB_URL|MAIL' })",
+      "PowerShell(Select-String -Path \"apps\\\\web\\\\src\\\\pages\\\\SignUp.tsx\" -Pattern \"showToggle\" -Encoding utf8 | ForEach-Object { $_.LineNumber.ToString\\(\\) + \": \" + $_.Line.Trim\\(\\) })",
+      "Bash(ls -d /c/app-3-*)",
+      "Bash(cp .env .env.bak)",
+      "Bash(python -)",
+      "Bash(echo \"api typecheck exit: $?\")",
+      "Bash(netstat -ano)",
+      "Bash(powershell -Command \"Get-Process -Id 37936 | Select-Object Id, StartTime, ProcessName | Format-List\")",
+      "Bash(echo \"EXIT:$?\")",
+      "PowerShell($f1 = \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\components\\\\ProjectCard.tsx\"; $f2 = \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\data\\\\mock.ts\"; foreach \\($f in @\\($f1,$f2\\)\\) { if \\(Test-Path $f\\) { Remove-Item $f -Force; \"removed: $f\" } else { \"already gone: $f\" } }; \"data dir:\"; Get-ChildItem \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\data\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)",
+      "PowerShell(Set-Location *)",
+      "PowerShell(Get-ChildItem \"C:\\\\app-3-รอดำเนินการ\\\\node_modules\\\\@tiptap\\\\\" -Directory | Where-Object { $_.Name -match \"table|starter\" } | Select-Object Name)"
     ]
   }
 }

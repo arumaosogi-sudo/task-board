@@ -13,6 +13,8 @@ import ProjectSettings from './pages/ProjectSettings'
 import Settings from './pages/Settings'
 import WorkPage from './pages/WorkPage'
 import Trash from './pages/Trash'
+import MyUpdates from './pages/MyUpdates'
+import ProjectChanges from './pages/ProjectChanges'
 
 // Phase 1: Auth Core · Phase 2: Projects. More protected routes added per phase.
 export default function App() {
@@ -29,6 +31,8 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/my-updates" element={<ProtectedRoute><MyUpdates /></ProtectedRoute>} />
+          <Route path="/project-changes" element={<ProtectedRoute><ProjectChanges /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
           <Route path="/projects/:id/work" element={<ProtectedRoute><WorkPage /></ProtectedRoute>} />

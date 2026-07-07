@@ -102,6 +102,7 @@ export default function Login() {
           <Field label={t('auth.password')} htmlFor="pw">
             <PasswordInput
               id="pw"
+              showToggle={false}
               placeholder="••••••••"
               autoComplete="current-password"
               value={password}

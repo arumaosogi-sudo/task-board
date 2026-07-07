@@ -85,9 +85,12 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]" role="dialog" aria-modal="true" aria-label={t('common.search')}>
-      <div className="absolute inset-0 bg-ink/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-xl animate-pop rounded-2xl bg-card shadow-pop mx-4">
-        <div className="flex items-center gap-3 border-b border-line px-4">
+      <div className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]" onClick={onClose} />
+      <div
+        className="relative mx-4 flex w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-ink/10 animate-pop"
+        style={{ maxHeight: 'min(640px, 85vh)' }}
+      >
+        <div className="flex shrink-0 items-center gap-3 border-b border-line/60 px-4 py-1">
           <Icon.search width={18} height={18} className="shrink-0 text-subtle" />
           <input
             ref={inputRef}
@@ -106,15 +109,15 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
           <kbd className="hidden rounded-md border border-line px-1.5 py-0.5 font-mono text-[11px] text-subtle sm:block">Esc</kbd>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-2">
           {showEmpty && (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
               <Icon.search width={24} height={24} className="text-subtle" />
               <p className="text-sm text-muted">{t('search.empty')}</p>
             </div>
           )}
           {showNoResults && (
-            <div className="flex flex-col items-center gap-2 py-10 text-center">
+            <div className="flex flex-col items-center gap-2 py-8 text-center">
               <Icon.search width={24} height={24} className="text-subtle" />
               <p className="text-sm text-ink">{t('search.noResults', { query: debounced })}</p>
               <p className="text-[12px] text-muted">{t('search.tryAnother')}</p>
@@ -126,7 +129,7 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
             const Icn = typeIcon[type]
             return (
               <div key={type}>
-                <p className="px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-subtle">{typeLabel[type]}</p>
+                <p className="px-4 pb-1.5 pt-3 text-[10px] font-semibold uppercase tracking-widest text-subtle/70">{typeLabel[type]}</p>
                 {items.map((item) => {
                   const idx = flat.indexOf(item)
                   return (
@@ -134,10 +137,10 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
                       key={item.type + item.title + item.subtitle}
                       onClick={() => { navigate(item.to); onClose() }}
                       onMouseEnter={() => setSelected(idx)}
-                      className={cn('flex w-full items-center gap-3 px-4 py-2.5 text-left transition',
-                        selected === idx ? 'bg-primary-soft' : 'hover:bg-ink/5')}
+                      className={cn('flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
+                        selected === idx ? 'bg-primary/10' : 'hover:bg-ink/[0.04]')}
                     >
-                      <div className={cn('grid size-8 shrink-0 place-items-center rounded-lg',
+                      <div className={cn('grid size-8 shrink-0 place-items-center rounded-lg transition-colors',
                         selected === idx ? 'bg-primary text-primary-fg' : 'bg-line text-muted')}>
                         <Icn width={15} height={15} />
                       </div>
@@ -155,7 +158,7 @@ export function SearchOverlay({ open, onClose }: { open: boolean; onClose: () =>
         </div>
 
         {results.length > 0 && (
-          <div className="flex items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-subtle">
+          <div className="flex shrink-0 items-center gap-3 border-t border-line px-4 py-2 text-[11px] text-subtle">
             <span><kbd className="rounded border border-line px-1">↑</kbd> <kbd className="rounded border border-line px-1">↓</kbd> {t('search.navigate')}</span>
             <span><kbd className="rounded border border-line px-1">↵</kbd> {t('search.open')}</span>
           </div>
