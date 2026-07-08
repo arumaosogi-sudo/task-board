@@ -57,8 +57,12 @@ export default {
         blink: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0' } },
       },
       animation: {
-        pop: 'pop 0.16s ease-out',
-        fade: 'fade 0.2s ease-out',
+        // `both` = animation-fill-mode: both — retain the 100% (opacity:1) end state.
+        // Without it, if the animation is suppressed (e.g. prefers-reduced-motion forces
+        // duration ~0), the element can settle on the 0% keyframe (opacity:0) and render
+        // invisible — a cause of the "blank screen" when opening the drawing modal.
+        pop: 'pop 0.16s ease-out both',
+        fade: 'fade 0.2s ease-out both',
         blink: 'blink 1s step-end infinite',
       },
     },

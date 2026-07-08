@@ -1,6 +1,6 @@
 // /projects/:id/work — Phase 3 (complete): file tree + rich document editor
 // (text/format, image, freehand drawing w/ stylus, Box) + undo/redo + autosave + PDF export.
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
@@ -27,6 +27,38 @@ const CollabEditor = lazy(() =>
 )
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+// Isolates editor crashes (a thrown render in CollabEditor / DrawingCanvas / any lazy
+// chunk) so a failure paints an inline recoverable panel instead of unmounting the whole
+// WorkPage and leaving a blank/black screen. The "try again" button clears the error and
+// re-attempts the current doc.
+class EditorErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[EditorErrorBoundary]', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <p className="text-lg font-semibold text-ink">เกิดข้อผิดพลาดใน Editor</p>
+          <p className="mt-1 text-sm text-muted">{this.state.error.message}</p>
+          <button
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-fg"
+            onClick={() => this.setState({ error: null })}
+          >
+            ลองใหม่
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Auto-snapshot: create a silent revision after the user pauses editing this long.
 const AUTO_SNAPSHOT_MS = 5 * 60 * 1000 // 5 minutes
@@ -360,25 +392,29 @@ export default function WorkPage() {
               <div className="min-h-0 flex-1 overflow-auto bg-ink/[0.02] p-6">
                 {/* SPEC 1 — width-fit wrapper so the A4 page surface centers without a Card frame. */}
                 <div className="mx-auto w-fit">
-                  <Suspense fallback={
-                    <div className="grid place-items-center py-16">
-                      <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    </div>
-                  }>
-                    <CollabEditor
-                      key={doc.id}
-                      fileId={doc.id}
-                      token={getToken}
-                      initialContent={doc.content}
-                      orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
-                      readOnly={!canEdit}
-                      onChange={setContent}
-                      user={collabUser}
-                      onPresenceChange={handlePresence}
-                      onStatusChange={handleStatus}
-                      onReady={handleReady}
-                    />
-                  </Suspense>
+                  {/* `key={doc.id}` remounts the boundary on file switch so a crash on one
+                      doc doesn't stick when the user navigates to another. */}
+                  <EditorErrorBoundary key={doc.id}>
+                    <Suspense fallback={
+                      <div className="grid place-items-center py-16">
+                        <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      </div>
+                    }>
+                      <CollabEditor
+                        key={doc.id}
+                        fileId={doc.id}
+                        token={getToken}
+                        initialContent={doc.content}
+                        orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
+                        readOnly={!canEdit}
+                        onChange={setContent}
+                        user={collabUser}
+                        onPresenceChange={handlePresence}
+                        onStatusChange={handleStatus}
+                        onReady={handleReady}
+                      />
+                    </Suspense>
+                  </EditorErrorBoundary>
                 </div>
               </div>
             </>
