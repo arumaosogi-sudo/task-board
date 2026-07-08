@@ -42,13 +42,13 @@ export function useNotifications(enabled = true) {
   })
 }
 
-/** Lightweight poll for the unread badge (every 60s). */
+/** Lightweight poll for the unread badge (every 20s) — snappier near-real-time badge. */
 export function useUnreadCount(enabled = true) {
   return useQuery({
     queryKey: notificationKeys.unread(),
     queryFn: NotificationsApi.unreadCount,
     enabled,
-    refetchInterval: 60_000,
+    refetchInterval: 20_000,
     staleTime: 30_000,
   })
 }

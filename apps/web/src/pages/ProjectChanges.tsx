@@ -20,14 +20,10 @@ export default function ProjectChanges() {
   const { t, i18n } = useTranslation()
   const [range, setRange] = useState<UpdatesRange>('30d')
   const [projectId, setProjectId] = useState<string | null>(null)
-  const [authorId, setAuthorId] = useState<string | null>(null)
   const [target, setTarget] = useState<DiffTarget | null>(null)
 
   const { data: projects } = useProjects()
-  // Unfiltered-by-author feed (shares its cache key with the display query when
-  // authorId is null) — used to build a stable person filter list.
-  const { data: allItems } = useProjectChanges(range, projectId, null)
-  const { data: items, isLoading, isError } = useProjectChanges(range, projectId, authorId)
+  const { data: items, isLoading, isError } = useProjectChanges(range, projectId, null)
 
   const rangeOptions = useMemo(
     () => [
@@ -38,18 +34,7 @@ export default function ProjectChanges() {
     [t],
   )
 
-  // Distinct authors present in the current project/range window.
-  const people = useMemo(() => {
-    const seen = new Map<string, string>()
-    for (const it of allItems ?? []) if (!seen.has(it.authorId)) seen.set(it.authorId, it.authorName)
-    return Array.from(seen, ([id, name]) => ({ id, name }))
-  }, [allItems])
-
   const activeProjectName = projects?.find((p) => p.id === projectId)?.name ?? t('updates.allProjects')
-  const activePersonName = people.find((p) => p.id === authorId)?.name ?? t('updates.allPeople')
-
-  // Dropping the project filter can strand a now-invalid author selection; the
-  // people list simply won't contain it, so the label falls back to "everyone".
 
   function openDiff(u: ProjectChangeItem) {
     setTarget({
@@ -88,27 +73,6 @@ export default function ProjectChanges() {
                 key={p.id}
                 icon={projectId === p.id ? <Icon.check width={16} height={16} /> : <span className="size-4" />}
                 onClick={() => setProjectId(p.id)}
-              >
-                {p.name}
-              </MenuItem>
-            ))}
-          </Menu>
-          <Menu align="left" trigger={
-            <Button variant="secondary">
-              <Icon.invite width={16} height={16} /> {activePersonName}
-            </Button>
-          }>
-            <MenuItem
-              icon={authorId === null ? <Icon.check width={16} height={16} /> : <span className="size-4" />}
-              onClick={() => setAuthorId(null)}
-            >
-              {t('updates.allPeople')}
-            </MenuItem>
-            {people.map((p) => (
-              <MenuItem
-                key={p.id}
-                icon={authorId === p.id ? <Icon.check width={16} height={16} /> : <span className="size-4" />}
-                onClick={() => setAuthorId(p.id)}
               >
                 {p.name}
               </MenuItem>

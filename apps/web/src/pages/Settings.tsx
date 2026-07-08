@@ -65,11 +65,10 @@ export default function Settings() {
     try {
       const body: { username?: string; email?: string } = {}
       if (username.trim() && username.trim() !== user?.username) body.username = username.trim()
-      if (email.trim() && email.trim() !== user?.email) body.email = email.trim()
       if (Object.keys(body).length === 0) return
       await updateProfile.mutateAsync(body)
       await refreshMe()
-      flash('success', body.email ? t('settings.emailChangedVerify') : t('settings.profileSaved'))
+      flash('success', t('settings.profileSaved'))
     } catch (e) { onErr(e, t('errors.saveFailed')) }
   }
 
@@ -132,11 +131,11 @@ export default function Settings() {
             </Field>
             <Field label={t('settings.email')} htmlFor="em"
               hint={user && !user.emailVerified ? t('settings.emailUnverified') : undefined}>
-              <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+              <Input id="em" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" readOnly disabled className="opacity-70 cursor-not-allowed" />
             </Field>
             <div className="flex justify-end">
               <Button onClick={saveProfile} loading={updateProfile.isPending}
-                disabled={!username.trim() || (username.trim() === user?.username && email.trim() === user?.email)}>
+                disabled={!username.trim() || username.trim() === user?.username}>
                 {t('settings.saveProfile')}
               </Button>
             </div>

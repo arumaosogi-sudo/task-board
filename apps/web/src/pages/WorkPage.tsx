@@ -15,6 +15,7 @@ import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
 import { RevisionsApi } from '../lib/revisions'
 import {
+  FilesApi,
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
   type FileKind, type FileNode,
 } from '../lib/files'
@@ -118,6 +119,9 @@ export default function WorkPage() {
   const canEditRef = useRef(false)
   contentRef.current = content
   canEditRef.current = !!canEdit
+  // Tracks the HTML we last persisted to File.content so the file-switch/unmount flush
+  // can skip a redundant PUT when nothing changed since the last autosave.
+  const savedContentRef = useRef('')
 
   // Fire-and-forget snapshot: silent, non-blocking, and de-duplicated. Skips empty bodies,
   // viewers, and content identical to the last snapshot to keep the revision feed clean.
@@ -159,6 +163,8 @@ export default function WorkPage() {
       // Baseline the auto-snapshot against the just-loaded content so we never take a
       // redundant snapshot of an unchanged document.
       lastSnapshotContent.current = doc.content
+      // Baseline the autosave flush against the loaded content — nothing to flush yet.
+      savedContentRef.current = doc.content
     }
     setPresence([]); setConnStatus('connecting')
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,8 +175,8 @@ export default function WorkPage() {
     if (content === doc.content) return
     setStatus('saving')
     const t = setTimeout(async () => {
-      try { await save.mutateAsync(content); setStatus('saved') }
-      catch { setStatus('error') }
+      try { await save.mutateAsync(content); savedContentRef.current = content; setStatus('saved') }
+      catch (err) { console.error('[autosave] failed:', err); setStatus('error') }
     }, 800)
     return () => clearTimeout(t)
   }, [content]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -191,13 +197,24 @@ export default function WorkPage() {
 
   // Flush a snapshot immediately when switching files / unmounting, so a pending debounce
   // isn't lost. Reads live content from the ref; takeSnapshot de-dupes against the last one.
+  // Also flush the pending File.content autosave so a fast file-switch / tab-close before
+  // the 800ms debounce fires doesn't drop the tail edit. We PUT against the OUTGOING file's
+  // id (`fid`) via FilesApi directly — the `save` hook is bound to the new selectedId by the
+  // time cleanup runs, so using it would save to the wrong file.
   useEffect(() => {
     if (!doc) return
     const pid = id
     const fid = doc.id
     return () => {
       clearTimeout(autoSnapshotTimer.current)
-      takeSnapshot(pid, fid, contentRef.current)
+      const latest = contentRef.current
+      takeSnapshot(pid, fid, latest)
+      if (canEditRef.current && latest.trim() !== '' && latest !== savedContentRef.current) {
+        savedContentRef.current = latest
+        FilesApi.saveContent(pid, fid, latest).catch((err) =>
+          console.error('[autosave] flush on switch/unmount failed:', err),
+        )
+      }
     }
   }, [doc?.id, id, takeSnapshot]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -225,7 +242,7 @@ export default function WorkPage() {
       `h1{font-size:24px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px}h2{font-size:19px;margin:20px 0 8px}` +
       `ul,ol{padding-left:24px}a{color:#4f46e5}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
       `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}</style></head><body>` +
-      `<h1>${safeName}</h1>${body}` +
+      `${body}` +
       `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
     )
     w.document.close()

@@ -151,14 +151,32 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 /* The editable content sits on a physical-size white page. Padding is the 1-inch page
    margin (96px @ 96dpi). Text is forced dark so the page stays readable in dark mode. */
 .tb-page {
-  background: #fff;
   margin: 0 auto;
   padding: 96px;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 12px 40px rgb(0 0 0 / 0.18);
   border-radius: 2px;
+  position: relative;
+  /* Page height drives where the visual page-break gap is painted. */
+  --page-h: 1123px;
+  /* repeating-linear-gradient: white content area, a thin rule + a grey gap between pages.
+     This is background only (no extra element), so editable content still receives clicks. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #fff 0,
+      #fff calc(var(--page-h) - 1px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) - 1px),
+      rgba(0, 0, 0, 0.08) var(--page-h),
+      #f0f0f0 var(--page-h),
+      #f0f0f0 calc(var(--page-h) + 20px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) + 20px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) + 21px),
+      #fff calc(var(--page-h) + 21px)
+    );
+  background-size: 100% calc(var(--page-h) + 21px);
 }
-.tb-page--portrait  { width: 794px;  min-height: 1123px; }
-.tb-page--landscape { width: 1123px; min-height: 794px;  }
+.tb-page--portrait  { width: 794px;  min-height: var(--page-h); --page-h: 1123px; }
+.tb-page--landscape { width: 1123px; min-height: 794px;         --page-h: 794px; }
 .tb-page .tb-prose  { color: #1d2333; }
 
 @media (max-width: 900px) {

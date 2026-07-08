@@ -111,10 +111,15 @@ export class ProjectsService {
     )
   }
 
-  /** Trashed projects the user owns (only the owner sees trash). */
+  /** Trashed projects the user owns (only the owner sees trash). Matches on an Owner
+   *  membership rather than `ownerId` alone — robust against any ownerId drift and
+   *  consistent with how listMine resolves the viewer's role. */
   async listTrash(userId: string): Promise<ProjectSummary[]> {
     const projects = await this.prisma.project.findMany({
-      where: { ownerId: userId, deletedAt: { not: null } },
+      where: {
+        deletedAt: { not: null },
+        memberships: { some: { userId, role: Role.Owner } },
+      },
       include: { owner: true, _count: { select: { memberships: true } } },
       orderBy: { deletedAt: 'desc' },
     })

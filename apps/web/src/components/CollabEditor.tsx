@@ -114,8 +114,10 @@ const GROUPS: ToolButton[][] = [
   ],
   [
     // Undo/redo go through the Yjs UndoManager (Collaboration extension), not StarterKit history.
-    { key: 'undo', title: 'ย้อนกลับ (Ctrl+Z)', icon: 'undo', run: (e) => e.chain().focus().undo().run(), enabled: (e) => e.can().undo() },
-    { key: 'redo', title: 'ทำซ้ำ (Ctrl+Y)', icon: 'redo', run: (e) => e.chain().focus().redo().run(), enabled: (e) => e.can().redo() },
+    // No `enabled` guard: Yjs UndoManager makes `can().undo()/redo()` unreliable
+    // (redo returns false spuriously). Buttons are always clickable; an empty stack no-ops.
+    { key: 'undo', title: 'ย้อนกลับ (Ctrl+Z)', icon: 'undo', run: (e) => e.chain().focus().undo().run() },
+    { key: 'redo', title: 'ทำซ้ำ (Ctrl+Y)', icon: 'redo', run: (e) => e.chain().focus().redo().run() },
   ],
 ]
 
@@ -417,6 +419,29 @@ export function CollabEditor({
               className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
             >
               <Icon.box width={16} height={16} />
+            </button>
+            <button
+              type="button"
+              title="ลบกล่องข้อความ"
+              disabled={!editor.isActive('box')}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                const { $from } = editor.state.selection
+                for (let d = $from.depth; d > 0; d--) {
+                  if ($from.node(d).type.name === 'box') {
+                    const start = $from.before(d)
+                    const end = $from.after(d)
+                    editor.chain().focus().deleteRange({ from: start, to: end }).run()
+                    break
+                  }
+                }
+              }}
+              className={cn(
+                'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink',
+                !editor.isActive('box') && 'opacity-40 hover:bg-transparent',
+              )}
+            >
+              <Icon.trash width={16} height={16} />
             </button>
             <button
               type="button" title="แทรกตาราง"

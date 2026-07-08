@@ -68,7 +68,10 @@ export function DrawingCanvas({
   function resetAll() { setHistory([[]]); setPtr(0); setCurrent(null); drawing.current = false }
 
   function pointFromEvent(e: React.PointerEvent): { x: number; y: number } {
-    const rect = svgRef.current!.getBoundingClientRect()
+    // Guard against a pointer event firing before the SVG mounts (edge case on touch
+    // devices) — a non-null assertion here would crash unhandled. Origin is a safe no-op.
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
     // Map screen → viewBox coordinates (the SVG scales responsively).
     return {
       x: ((e.clientX - rect.left) / rect.width) * W,
