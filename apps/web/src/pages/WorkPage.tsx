@@ -17,7 +17,7 @@ import { RevisionsApi } from '../lib/revisions'
 import {
   FilesApi,
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
-  type FileKind, type FileNode,
+  type FileNode,
 } from '../lib/files'
 
 // Lazy-loaded: TipTap + Yjs + Hocuspocus is a heavy bundle (~800KB). Split it out
@@ -129,7 +129,6 @@ export default function WorkPage() {
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newKind, setNewKind] = useState<FileKind>('Document')
   const [newOrientation, setNewOrientation] = useState<'portrait' | 'landscape'>('portrait')
   const [toDelete, setToDelete] = useState<FileNode | null>(null)
   const [presence, setPresence] = useState<PresenceUser[]>([])
@@ -283,12 +282,12 @@ export default function WorkPage() {
   async function submitCreate() {
     if (!newName.trim()) return
     try {
+      // Folder creation is disabled — the Work Page only creates Documents now.
       const created = await create.mutateAsync({
         name: newName.trim(),
-        kind: newKind,
+        kind: 'Document',
         parentId: null,
-        // Orientation only applies to documents; folders carry no page geometry.
-        ...(newKind === 'Document' && { orientation: newOrientation }),
+        orientation: newOrientation,
       })
       setCreateOpen(false); setNewName(''); setNewOrientation('portrait')
       if (created.kind === 'Document') setSelectedId(created.id)
@@ -320,7 +319,7 @@ export default function WorkPage() {
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
             {canEdit && (
-              <button onClick={() => { setCreateOpen(true); setNewKind('Document'); setNewOrientation('portrait') }}
+              <button onClick={() => { setCreateOpen(true); setNewOrientation('portrait') }}
                 className="grid size-7 place-items-center rounded-lg text-primary hover:bg-primary-soft" aria-label={t('work.createFile')}>
                 <Icon.plus width={16} height={16} />
               </button>
@@ -448,21 +447,18 @@ export default function WorkPage() {
           </>
         }
       >
+        {/* Folder creation removed (Google Docs-style flat file list). Only Documents
+            can be created now; existing folders still render/delete via the tree. */}
         <div className="space-y-4">
-          <Segmented value={newKind} onChange={setNewKind}
-            options={[{ value: 'Document', label: t('work.document') }, { value: 'Folder', label: t('work.folder') }]} />
           <Field label={t('common.name')} htmlFor="fn">
             <Input id="fn" value={newName} onChange={(e) => setNewName(e.target.value)}
-              placeholder={newKind === 'Folder' ? t('work.folderNamePlaceholder') : t('work.documentNamePlaceholder')} autoFocus
+              placeholder={t('work.documentNamePlaceholder')} autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') submitCreate() }} />
           </Field>
-          {/* Page orientation is document-only; folders have no page geometry. */}
-          {newKind === 'Document' && (
-            <Field label={t('work.orientation')}>
-              <Segmented value={newOrientation} onChange={setNewOrientation}
-                options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
-            </Field>
-          )}
+          <Field label={t('work.orientation')}>
+            <Segmented value={newOrientation} onChange={setNewOrientation}
+              options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
+          </Field>
         </div>
       </Modal>
 

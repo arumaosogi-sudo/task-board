@@ -37,8 +37,12 @@ export function ResizableImageView({ node, updateAttributes, selected, editor }:
         ref={imgRef}
         src={node.attrs.src as string}
         alt={(node.attrs.alt as string) ?? ''}
-        style={{ width: w ? `${w}px` : undefined }}
-        draggable={false}
+        style={{ width: w ? `${w}px` : undefined, cursor: editable ? 'grab' : 'default' }}
+        // `data-drag-handle` tells ProseMirror this element initiates a node drag.
+        // PM moves the node by position (never by attribute), so drag-to-reposition
+        // is Yjs-safe. Only draggable when editing so viewers can't drag the image.
+        data-drag-handle={editable ? '' : undefined}
+        draggable={editable}
       />
       {editable && selected && (
         <span className="tb-img-handle" onPointerDown={startResize} role="presentation" />

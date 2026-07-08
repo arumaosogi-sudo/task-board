@@ -142,7 +142,22 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 
 /* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
 .tb-prose:focus { outline: none; }
-.tb-prose .ProseMirror-selectednode { @apply rounded-lg outline outline-2 outline-primary; }
+.ProseMirror { cursor: text; }
+.ProseMirror img { cursor: default; }
+
+/* Google Docs feel: no chrome around a selected node. ProseMirror adds
+   `.ProseMirror-selectednode` whenever a NodeSelection is active (image, box,
+   drawing, …); we strip its outline/box-shadow entirely. Selection affordance for
+   images is provided by the node view's own resize handles, not a border. */
+.tb-prose .ProseMirror-selectednode {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* Text selection — soft light-blue highlight, no border (Google Docs style). */
+.tb-prose ::selection {
+  background-color: rgba(26, 115, 232, 0.25);
+  color: inherit;
+}
 /* Text alignment (TipTap TextAlign writes inline text-align; keep block flow intact). */
 .tb-prose [style*='text-align:center'] { text-align: center; }
 .tb-prose [style*='text-align:right'] { text-align: right; }
@@ -186,7 +201,8 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 /* ---- Resizable image (SPEC 3) ---- */
 .tb-img-wrap { position: relative; display: inline-block; line-height: 0; }
 .tb-img-wrap img { max-width: 100%; border-radius: 8px; }
-.tb-img-wrap[data-selected='true'] img { outline: 2px solid #7c5cff; }
+/* Google Docs style: no border/outline on the selected image — the corner resize
+   handle (rendered by the node view) is the only selection affordance. */
 .tb-img-handle {
   position: absolute;
   right: -6px;
