@@ -40,12 +40,13 @@ jobs:
       - name: Typecheck (all workspaces)
         run: npm run typecheck
 
+      # Unit/integration tests run before build to fail fast on logic errors.
+      # Prisma Client was generated above, so api tests can touch Prisma types.
+      - name: Test (all workspaces)
+        run: npm run test
+
       - name: Build (all workspaces)
         run: npm run build
-
-      # --- Future: uncomment once a real test runner exists in any workspace ---
-      # - name: Test
-      #   run: npm run test
 
   docker-build-check:
     name: Docker images build (sanity check, not pushed)
