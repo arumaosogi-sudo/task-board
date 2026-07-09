@@ -222,7 +222,10 @@ export class AuthController {
 
   /* ----------------------------- check username --------------------------- */
 
+  // Throttled to blunt username enumeration (feeds credential-stuffing) while
+  // still allowing a real user's debounced availability checks during signup.
   @Get('check-username/:username')
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   checkUsername(@Param('username') username: string) {
     return this.auth.checkUsername(username)
   }

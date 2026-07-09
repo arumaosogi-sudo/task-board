@@ -5,7 +5,18 @@
 .git
 .gitignore
 **/.env
+**/.env.production
+**/.env.production.example
 **/*.log
 design-*
 content-*
 figma-*
+
+# Docs / ops / CI — not needed inside the image; only slows the build context
+# upload. Dockerfiles COPY explicit paths, so this is a size optimization,
+# not a security boundary (secrets are already excluded above via .env*).
+docs/
+ops/
+.github/
+*.md
+docker-compose*.yml

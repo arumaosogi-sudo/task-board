@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  install-and-verify:
+    name: Install → Typecheck → Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (workspace-aware, reproducible)
+        run: npm ci
+
+      # @prisma/client types must exist before tsc runs across the workspace.
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+
+      - name: Lint
+        run: npm run lint
+        # NOTE: currently a no-op stub ("echo lint ok") in every workspace — kept in
+        # the pipeline so it starts failing the moment real ESLint config lands.
+
+      - name: Typecheck (all workspaces)
+        run: npm run typecheck
+
+      - name: Build (all workspaces)
+        run: npm run build
+
+      # --- Future: uncomment once a real test runner exists in any workspace ---
+      # - name: Test
+      #   run: npm run test
+
+  docker-build-check:
+    name: Docker images build (sanity check, not pushed)
+    runs-on: ubuntu-latest
+    needs: install-and-verify
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build api image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          build-args: |
+            VITE_API_URL=https://api.placeholder.invalid
+            VITE_COLLAB_URL=wss://api.placeholder.invalid
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

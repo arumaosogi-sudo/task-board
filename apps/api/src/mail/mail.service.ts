@@ -2,6 +2,21 @@ import { Injectable, Logger } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as nodemailer from 'nodemailer'
 
+/**
+ * Escape the 5 HTML-significant characters so user-controlled values (e.g. a
+ * project name, which has no character restriction) cannot inject markup/links
+ * into the email body. Must be applied to every user value before it enters an
+ * HTML template. Links keep encodeURIComponent — do not run this on URLs.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name)
@@ -49,9 +64,13 @@ export class MailService {
 
   sendInvitationEmail(to: string, token: string, projectName: string, inviterName: string): Promise<void> {
     const link = `${this.webUrl}/accept-invite?token=${encodeURIComponent(token)}`
+    // Escape user-controlled values before they enter the HTML template. The
+    // plain-text `subject`/`text` fields are not HTML, so they use the raw values.
+    const safeProject = escapeHtml(projectName)
+    const safeInviter = escapeHtml(inviterName)
     const subject = `คุณได้รับเชิญเข้าร่วม "${projectName}" — Task Board`
     return this.send(to, subject, {
-      html: this.layout(`เชิญเข้าร่วม ${projectName}`, `${inviterName} เชิญคุณเข้าร่วม Project "${projectName}" บน Task Board คลิกปุ่มด้านล่างเพื่อตอบรับ ลิงก์นี้จะหมดอายุใน 7 วัน`, link, 'ตอบรับคำเชิญ'),
+      html: this.layout(`เชิญเข้าร่วม ${safeProject}`, `${safeInviter} เชิญคุณเข้าร่วม Project "${safeProject}" บน Task Board คลิกปุ่มด้านล่างเพื่อตอบรับ ลิงก์นี้จะหมดอายุใน 7 วัน`, link, 'ตอบรับคำเชิญ'),
       text: `${inviterName} เชิญคุณเข้าร่วม "${projectName}" บน Task Board\n\nคลิกลิงก์นี้เพื่อตอบรับ (หมดอายุใน 7 วัน):\n${link}`,
     })
   }
