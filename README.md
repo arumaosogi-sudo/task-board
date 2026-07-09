@@ -92,6 +92,37 @@ npm run build       # tsc (api) + vite build (web)
 The web build code-splits the collaborative editor (TipTap + Yjs) into its own lazy
 chunk, so the app shell paints without waiting for the ~470 KB editor bundle.
 
+## Testing
+
+```bash
+npm test          # unit tests, all workspaces (mock Prisma — no DB needed)
+```
+
+### Integration tests (real Postgres)
+
+A separate suite (`apps/api/**/*.int-spec.ts`) runs against a **real** PostgreSQL to
+catch mock/schema drift and verify database-level Row-Level Security — things the
+Prisma-mocking unit tests can't see. It is **excluded from `npm test`** on purpose, so
+the default suite stays DB-free.
+
+```bash
+# 1. Start a disposable local Postgres (docker-compose service `db`)
+docker compose up -d db
+
+# 2. Point the tests at it via TEST_DATABASE_URL (NEVER DATABASE_URL / Supabase —
+#    the suite TRUNCATEs every table between tests). Guards refuse to run otherwise.
+export TEST_DATABASE_URL=postgresql://taskboard:taskboard@localhost:5432/taskboard
+
+# 3. Run it. The suite auto-creates the anon/authenticated roles, runs
+#    `prisma migrate deploy` against the test DB, then runs the specs serially.
+npm run test:int
+```
+
+> Windows PowerShell: `$env:TEST_DATABASE_URL = 'postgresql://taskboard:taskboard@localhost:5432/taskboard'`
+
+In CI these run in a dedicated **`API integration tests (real Postgres)`** job with an
+ephemeral `postgres:16` service container (see `.github/workflows/ci.yml`).
+
 ## Deploy (Docker)
 
 Both images build from the **repo root** (workspaces + `packages/shared` must resolve).

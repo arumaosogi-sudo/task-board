@@ -48,6 +48,55 @@ jobs:
       - name: Build (all workspaces)
         run: npm run build
 
+  api-integration:
+    name: API integration tests (real Postgres)
+    runs-on: ubuntu-latest
+    needs: install-and-verify
+    timeout-minutes: 15
+    # Ephemeral Postgres just for this job — created fresh, thrown away after.
+    # NEVER points at DATABASE_URL / Supabase; the suite TRUNCATEs every table.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: taskboard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # Consumed by jest.integration.config.js → env-setup.ts / global-setup.ts.
+      # global-setup creates the anon/authenticated roles and runs
+      # `prisma migrate deploy` against this DB before the specs run.
+      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskboard_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (workspace-aware, reproducible)
+        run: npm ci
+
+      # @prisma/client types + engine must exist before migrate/tests run.
+      - name: Generate Prisma Client
+        run: npx prisma generate --schema apps/api/prisma/schema.prisma
+
+      # Migrations are applied by the suite's globalSetup (after it creates the
+      # anon/authenticated roles the RLS migration REVOKEs from — those don't
+      # exist on a vanilla Postgres, so migrate must not run before them).
+      - name: Integration tests (real Postgres, serial)
+        run: npm run test:int
+
   docker-build-check:
     name: Docker images build (sanity check, not pushed)
     runs-on: ubuntu-latest
