@@ -11,6 +11,10 @@ module.exports = {
   testEnvironment: 'node',
   moduleFileExtensions: ['ts', 'js', 'json'],
   testRegex: '.*\\.spec\\.ts$',
+  // Load the reflect-metadata polyfill once before any spec. Specs that import
+  // Nest-decorated classes (@Injectable/@Controller) trigger swc-emitted
+  // Reflect.metadata() calls at class-definition time, which need this global.
+  setupFiles: ['reflect-metadata'],
   transform: {
     '^.+\\.(t|j)s$': [
       '@swc/jest',

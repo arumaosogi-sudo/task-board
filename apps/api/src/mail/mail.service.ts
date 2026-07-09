@@ -8,7 +8,7 @@ import * as nodemailer from 'nodemailer'
  * into the email body. Must be applied to every user value before it enters an
  * HTML template. Links keep encodeURIComponent — do not run this on URLs.
  */
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
