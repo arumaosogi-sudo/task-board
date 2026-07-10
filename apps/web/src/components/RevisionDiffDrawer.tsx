@@ -76,11 +76,18 @@ export function RevisionDiffDrawer({ target, onClose }: { target: DiffTarget | n
                 <p className="truncate font-heading font-semibold">{target.title}</p>
                 <p className="truncate text-[12px] text-muted">{target.subtitle}</p>
               </div>
-              <Link to={`/projects/${target.projectId}/work?file=${target.fileId}`} className="ml-auto shrink-0">
-                <Button variant="secondary" size="sm">
-                  <Icon.file width={15} height={15} /> {t('updates.openFile')}
-                </Button>
-              </Link>
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <Link to={`/projects/${target.projectId}/work?file=${target.fileId}&history=1`}>
+                  <Button variant="ghost" size="sm">
+                    <Icon.clock width={15} height={15} /> {t('updates.viewAllHistory')}
+                  </Button>
+                </Link>
+                <Link to={`/projects/${target.projectId}/work?file=${target.fileId}`}>
+                  <Button variant="secondary" size="sm">
+                    <Icon.file width={15} height={15} /> {t('updates.openFile')}
+                  </Button>
+                </Link>
+              </div>
             </div>
             <div className="scroll-thin flex-1 overflow-auto p-5">
               {currentLoading || !diff ? (

@@ -262,10 +262,6 @@
     "activityEmptyAllBody": "When people edit documents in your projects, their activity appears here.",
     "activityEmptyMineTitle": "You have no edits yet",
     "activityEmptyMineBody": "Switch to “All” to see your team's activity, or start editing a document to build your history.",
-    "myTitle": "My Edits",
-    "mySubtitle": "Revisions you've saved across all your projects",
-    "changesTitle": "Changes",
-    "changesSubtitle": "Revisions from everyone in projects you belong to",
     "range7d": "7 days",
     "range30d": "30 days",
     "rangeAll": "All",
@@ -275,11 +271,8 @@
     "scopeMember": "Collaborator",
     "by": "By",
     "openFile": "Open file",
-    "loadError": "Couldn't load updates. Check your connection and try again.",
-    "myEmptyTitle": "No edits yet",
-    "myEmptyBody": "Start editing a document and your saved revisions will show up here.",
-    "changesEmptyTitle": "No changes yet",
-    "changesEmptyBody": "When people edit documents in your projects, their revisions appear here."
+    "viewAllHistory": "View this file's full history",
+    "loadError": "Couldn't load updates. Check your connection and try again."
   },
   "search": {
     "placeholder": "Search projects, files, or content…",

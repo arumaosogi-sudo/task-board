@@ -118,8 +118,9 @@ export default function WorkPage() {
   const { data: tree, isLoading: treeLoading } = useFileTree(id)
   const create = useCreateFile(id)
   const del = useDeleteFile(id)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const fileFromUrl = searchParams.get('file')
+  const historyFromUrl = searchParams.get('history') === '1'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data: doc } = useFile(id, selectedId)
@@ -259,6 +260,23 @@ export default function WorkPage() {
     const found = flattenTree(tree).find((n) => n.id === fileFromUrl && n.kind === 'Document')
     if (found) { appliedFileLink.current = fileFromUrl; setSelectedId(found.id) }
   }, [fileFromUrl, tree])
+
+  // Deep-link support (?history=1): auto-open the version-history modal for the linked
+  // file once it's actually loaded (the Activity drawer links here via "view all history").
+  // Applied once, then the `history` param is stripped so closing the modal or a later
+  // navigation doesn't reopen it. Waits for `doc` so HistoryModal (which only mounts with a
+  // loaded doc) targets the right file.
+  const appliedHistoryLink = useRef(false)
+  useEffect(() => {
+    if (!historyFromUrl || appliedHistoryLink.current) return
+    if (!doc || !selectedId) return
+    if (fileFromUrl && doc.id !== fileFromUrl) return // wait until the linked file loads
+    appliedHistoryLink.current = true
+    setHistoryOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete('history')
+    setSearchParams(next, { replace: true })
+  }, [historyFromUrl, doc, selectedId, fileFromUrl, searchParams, setSearchParams])
 
   // Dependency-free PDF export: open the document in a print window → "Save as PDF".
   function exportPdf() {
