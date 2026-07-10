@@ -49,17 +49,22 @@ const UpdatesApi = {
       .then((r) => r.data),
 }
 
-export function useMyUpdates(range: UpdatesRange, projectId: string | null) {
+// `enabled` lets the consolidated Activity page mount both hooks (rules-of-hooks
+// require it) while only firing the request for the currently-selected scope.
+// Defaults to true so existing single-feed callers are unaffected.
+export function useMyUpdates(range: UpdatesRange, projectId: string | null, enabled = true) {
   return useQuery({
     queryKey: updateKeys.myUpdates(range, projectId),
     queryFn: () => UpdatesApi.myUpdates(range, projectId),
+    enabled,
   })
 }
 
-export function useProjectChanges(range: UpdatesRange, projectId: string | null, authorId: string | null) {
+export function useProjectChanges(range: UpdatesRange, projectId: string | null, authorId: string | null, enabled = true) {
   return useQuery({
     queryKey: updateKeys.projectChanges(range, projectId, authorId),
     queryFn: () => UpdatesApi.projectChanges(range, projectId, authorId),
+    enabled,
   })
 }
 

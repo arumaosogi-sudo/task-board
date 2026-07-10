@@ -28,7 +28,7 @@ export function Button({
     google: 'bg-card text-ink border border-line hover:bg-paper',
   }
   const sizes: Record<ButtonSize, string> = {
-    sm: 'h-9 px-3 text-[13px] gap-1.5 rounded-[10px]',
+    sm: 'h-9 px-3 text-body-sm gap-1.5 rounded-[10px]',
     md: 'h-11 px-4 text-sm gap-2 rounded-xl',
     lg: 'h-12 px-5 text-[15px] gap-2 rounded-xl',
   }
@@ -60,15 +60,15 @@ export function Field({
   return (
     <div className="space-y-1.5">
       {label && (
-        <label htmlFor={htmlFor} className="flex items-center gap-2 text-[13px] font-medium text-ink">
+        <label htmlFor={htmlFor} className="flex items-center gap-2 text-body-sm font-medium text-ink">
           {label}
           {optional && <span className="text-subtle font-normal">(ไม่บังคับ)</span>}
         </label>
       )}
       {children}
-      {error && <p className="flex items-center gap-1.5 text-[12px] text-danger"><Icon.warning width={13} height={13} />{error}</p>}
-      {success && <p className="flex items-center gap-1.5 text-[12px] text-success"><Icon.check width={13} height={13} />{success}</p>}
-      {hint && !error && !success && <p className="text-[12px] text-muted leading-relaxed">{hint}</p>}
+      {error && <p className="flex items-center gap-1.5 text-caption text-danger"><Icon.warning width={13} height={13} />{error}</p>}
+      {success && <p className="flex items-center gap-1.5 text-caption text-success"><Icon.check width={13} height={13} />{success}</p>}
+      {hint && !error && !success && <p className="text-caption text-muted leading-relaxed">{hint}</p>}
     </div>
   )
 }
@@ -118,9 +118,24 @@ export function PasswordInput({
 }
 
 /* ------------------------------------ Card ----------------------------------- */
-export function Card({ className, children, ...rest }: { className?: string; children: ReactNode } & React.HTMLAttributes<HTMLDivElement>) {
+// `interactive` splits elevation by intent: static containers get a soft shadow
+// (reads as "not clickable"), while clickable cards lift + deepen on hover with a
+// primary border tint — the pattern Home's ProjectCard established. Default stays
+// non-interactive so existing callers keep a calm, container-style card.
+export function Card({ interactive, className, children, ...rest }: {
+  interactive?: boolean; className?: string; children: ReactNode
+} & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('bg-card rounded-xl border border-line shadow-card', className)} {...rest}>
+    <div
+      className={cn(
+        'bg-card rounded-xl border border-line',
+        interactive
+          ? 'shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-pop cursor-pointer'
+          : 'shadow-soft',
+        className,
+      )}
+      {...rest}
+    >
       {children}
     </div>
   )
@@ -137,7 +152,7 @@ export function Tag({ tone = 'neutral', children, className }: { tone?: TagTone;
     warn: 'bg-warn/10 text-warn',
   }
   return (
-    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium font-mono', tones[tone], className)}>
+    <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-caption font-medium font-mono', tones[tone], className)}>
       {children}
     </span>
   )
@@ -245,7 +260,7 @@ export function Modal({ open, onClose, title, children, footer, width = 'max-w-m
       <div className={cn('relative w-full rounded-2xl border border-line bg-card shadow-pop animate-pop', width)}>
         {title && (
           <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-            <h3 className="font-heading text-[17px] font-semibold">{title}</h3>
+            <h3 className="font-heading text-h3">{title}</h3>
             <button onClick={onClose} aria-label="ปิด" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5"><Icon.x /></button>
           </div>
         )}
@@ -281,7 +296,7 @@ export function Segmented<T extends string>({ value, onChange, options }: {
     <div className="inline-flex rounded-xl border border-line bg-card p-0.5">
       {options.map((o) => (
         <button key={o.value} onClick={() => onChange(o.value)}
-          className={cn('h-9 rounded-lg px-3 text-[13px] font-medium transition-colors',
+          className={cn('h-9 rounded-lg px-3 text-body-sm font-medium transition-colors',
             value === o.value ? 'bg-primary text-primary-fg' : 'text-muted hover:text-ink')}>
           {o.label}
         </button>
@@ -298,7 +313,7 @@ export function Banner({ tone = 'error', children }: { tone?: 'error' | 'success
     warn: 'bg-warn/10 text-warn border-warn/20',
   }
   return (
-    <div className={cn('flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-[13px]', tones[tone])}>
+    <div className={cn('flex items-start gap-2 rounded-xl border px-3.5 py-2.5 text-body-sm', tones[tone])}>
       <Icon.warning width={16} height={16} className="mt-0.5 shrink-0" />
       <div>{children}</div>
     </div>

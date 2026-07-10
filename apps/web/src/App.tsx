@@ -13,8 +13,7 @@ import ProjectSettings from './pages/ProjectSettings'
 import Settings from './pages/Settings'
 import WorkPage from './pages/WorkPage'
 import Trash from './pages/Trash'
-import MyUpdates from './pages/MyUpdates'
-import ProjectChanges from './pages/ProjectChanges'
+import Activity from './pages/Activity'
 
 // Phase 1: Auth Core · Phase 2: Projects. More protected routes added per phase.
 export default function App() {
@@ -31,8 +30,11 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/my-updates" element={<ProtectedRoute><MyUpdates /></ProtectedRoute>} />
-          <Route path="/project-changes" element={<ProtectedRoute><ProjectChanges /></ProtectedRoute>} />
+          <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
+          {/* Legacy feed routes consolidated into /activity (Sprint 3). Kept as
+              redirects so existing bookmarks / deep links don't 404. */}
+          <Route path="/my-updates" element={<Navigate to="/activity" replace />} />
+          <Route path="/project-changes" element={<Navigate to="/activity" replace />} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
           <Route path="/projects/:id/work" element={<ProtectedRoute><WorkPage /></ProtectedRoute>} />

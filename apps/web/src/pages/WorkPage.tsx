@@ -302,7 +302,7 @@ export default function WorkPage() {
     <div className="flex h-screen flex-col bg-paper">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
         <Link to="/home" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('work.home')}>
-          <Icon.logout width={18} height={18} className="rotate-180" />
+          <Icon.arrowLeft width={18} height={18} />
         </Link>
         <h1 className="truncate font-heading text-[15px] font-semibold">{project?.name ?? t('work.workPage')}</h1>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">{project?.myRole}</span>
@@ -317,7 +317,7 @@ export default function WorkPage() {
         {/* File tree */}
         <aside className="flex w-64 shrink-0 flex-col border-r border-line">
           <div className="flex items-center justify-between px-3 py-2.5">
-            <span className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
+            <span className="text-caption font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
             {canEdit && (
               <button onClick={() => { setCreateOpen(true); setNewOrientation('portrait') }}
                 className="grid size-7 place-items-center rounded-lg text-primary hover:bg-primary-soft" aria-label={t('work.createFile')}>
@@ -327,14 +327,14 @@ export default function WorkPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
             {treeLoading ? (
-              <p className="px-2 py-4 text-[13px] text-muted">{t('common.loading')}</p>
+              <p className="px-2 py-4 text-body-sm text-muted">{t('common.loading')}</p>
             ) : tree && tree.length > 0 ? (
               tree.map((n) => (
                 <TreeItem key={n.id} node={n} depth={0} selectedId={selectedId}
                   onSelect={(node) => setSelectedId(node.id)} onDelete={setToDelete} canEdit={!!canEdit} />
               ))
             ) : (
-              <p className="px-2 py-4 text-[13px] text-muted">{t('work.noFiles')}{canEdit ? t('work.noFilesHint') : ''}</p>
+              <p className="px-2 py-4 text-body-sm text-muted">{t('work.noFiles')}{canEdit ? t('work.noFilesHint') : ''}</p>
             )}
           </div>
         </aside>
@@ -352,9 +352,9 @@ export default function WorkPage() {
             <>
               <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4">
                 <span className="truncate text-sm font-medium">{doc.name}</span>
-                <span className={cn('text-[12px]', status === 'error' ? 'text-danger' : 'text-subtle')}>{statusText[status]}</span>
+                <span className={cn('text-caption', status === 'error' ? 'text-danger' : 'text-subtle')}>{statusText[status]}</span>
                 {connStatus !== 'connected' && (
-                  <span className="flex items-center gap-1 text-[12px] text-warn" title={t('work.connStatus')}>
+                  <span className="flex items-center gap-1 text-caption text-warn" title={t('work.connStatus')}>
                     <span className="size-1.5 rounded-full bg-warn" />
                     {connStatus === 'connecting' ? t('work.connecting') : t('work.offline')}
                   </span>

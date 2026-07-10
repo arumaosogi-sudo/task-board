@@ -25,8 +25,7 @@
   "nav": {
     "allProjects": "Project ทั้งหมด",
     "myProjects": "Project ของฉัน",
-    "myUpdates": "สิ่งที่ฉันแก้",
-    "projectChanges": "ความเปลี่ยนแปลง",
+    "activity": "กิจกรรม",
     "trash": "ถังขยะ",
     "settings": "ตั้งค่า"
   },
@@ -255,6 +254,14 @@
     "noChanges": "ไม่มีการเปลี่ยนแปลง"
   },
   "updates": {
+    "activityTitle": "กิจกรรม",
+    "activitySubtitle": "ประวัติการแก้ไขเวอร์ชันจากทุก project ของคุณ",
+    "scopeAll": "ทั้งหมด",
+    "scopeMine": "เฉพาะของฉัน",
+    "activityEmptyAllTitle": "ยังไม่มีความเคลื่อนไหว",
+    "activityEmptyAllBody": "เมื่อมีคนแก้ไขเอกสารใน project ของคุณ ความเคลื่อนไหวจะปรากฏที่นี่",
+    "activityEmptyMineTitle": "คุณยังไม่มีการแก้ไข",
+    "activityEmptyMineBody": "ลองสลับไปดู “ทั้งหมด” เพื่อดูความเคลื่อนไหวของทีม หรือเริ่มแก้ไขเอกสารเพื่อสร้างประวัติของคุณ",
     "myTitle": "สิ่งที่ฉันแก้",
     "mySubtitle": "เวอร์ชันที่คุณบันทึกไว้จากทุก project",
     "changesTitle": "ความเปลี่ยนแปลง",

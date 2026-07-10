@@ -35,6 +35,18 @@ export default {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
         thai: ['"Noto Sans Thai"', 'sans-serif'],
       },
+      // Semantic type scale (Sprint 3). Named tokens replace the scattered
+      // arbitrary `text-[Npx]` values so hierarchy is intentional, not incidental.
+      // Sizes map onto the existing arbitrary values to keep migration layout-safe.
+      fontSize: {
+        display: ['28px', { lineHeight: '1.2', fontWeight: '700' }],
+        h2: ['20px', { lineHeight: '1.3', fontWeight: '600' }],
+        h3: ['17px', { lineHeight: '1.4', fontWeight: '600' }],
+        body: ['14px', { lineHeight: '1.6' }],
+        'body-sm': ['13px', { lineHeight: '1.55' }],
+        caption: ['12px', { lineHeight: '1.4' }],
+        label: ['11px', { lineHeight: '1.3', letterSpacing: '0.02em', fontWeight: '600' }],
+      },
       borderRadius: {
         DEFAULT: '14px',
         lg: '14px',

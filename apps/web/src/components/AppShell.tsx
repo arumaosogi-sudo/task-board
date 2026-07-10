@@ -94,8 +94,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const items: NavEntry[] = [
     { key: 'allProjects', to: '/home', icon: Icon.folder, active: onHome && !filterMine },
     { key: 'myProjects', to: '/home?filter=mine', icon: Icon.star, active: onHome && filterMine },
-    { key: 'myUpdates', to: '/my-updates', icon: Icon.edit, active: location.pathname.startsWith('/my-updates') },
-    { key: 'projectChanges', to: '/project-changes', icon: Icon.clock, active: location.pathname.startsWith('/project-changes') },
+    { key: 'activity', to: '/activity', icon: Icon.clock, active: location.pathname.startsWith('/activity') },
     { key: 'trash', to: '/trash', icon: Icon.trash, active: location.pathname.startsWith('/trash') },
     { key: 'settings', to: '/settings', icon: Icon.gear, active: location.pathname.startsWith('/settings') },
   ]

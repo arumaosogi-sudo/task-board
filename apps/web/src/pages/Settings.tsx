@@ -1,7 +1,8 @@
 // /settings — account, appearance (theme), language, notifications, danger zone.
 import { useEffect, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { AppShell } from '../components/AppShell'
 import {
   Banner, Button, Card, Field, Input, Modal, PasswordInput, Segmented, Toggle,
 } from '../components/ui'
@@ -108,23 +109,19 @@ export default function Settings() {
   }
 
   return (
-    <div className="min-h-screen bg-paper">
-      <header className="flex h-16 items-center gap-3 border-b border-line px-5 sm:px-8">
-        <Link to="/home" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('common.back')}>
-          <Icon.arrowLeft width={18} height={18} />
-        </Link>
-        <div className="min-w-0">
-          <h1 className="truncate font-heading text-[15px] font-semibold">{t('settings.title')}</h1>
-          <p className="text-[12px] text-muted">{t('settings.subtitle')}</p>
+    <AppShell>
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-6">
+          <h1 className="font-heading text-display">{t('settings.title')}</h1>
+          <p className="mt-1 text-body-sm text-muted">{t('settings.subtitle')}</p>
         </div>
-      </header>
 
-      <main className="mx-auto max-w-3xl space-y-6 px-5 py-8 sm:px-8">
+        <div className="space-y-6">
         {banner && <Banner tone={banner.tone}>{banner.msg}</Banner>}
 
         {/* Account */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('settings.sectionAccount')}</h2>
+          <h2 className="font-heading text-h2">{t('settings.sectionAccount')}</h2>
           <div className="mt-4 space-y-4">
             <Field label={t('settings.username')} htmlFor="un">
               <Input id="un" value={username} onChange={(e) => setUsername(e.target.value)} maxLength={30} autoComplete="username" />
@@ -168,7 +165,7 @@ export default function Settings() {
 
         {/* Appearance */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('settings.sectionAppearance')}</h2>
+          <h2 className="font-heading text-h2">{t('settings.sectionAppearance')}</h2>
           <div className="mt-4">
             <ThemeSwitcher onChange={persistTheme} />
           </div>
@@ -176,7 +173,7 @@ export default function Settings() {
 
         {/* Language */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('settings.sectionLanguage')}</h2>
+          <h2 className="font-heading text-h2">{t('settings.sectionLanguage')}</h2>
           <div className="mt-4 flex items-center justify-between">
             <p className="text-sm text-ink">{t('settings.languageLabel')}</p>
             <Segmented<Language>
@@ -192,7 +189,7 @@ export default function Settings() {
 
         {/* Notifications */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('settings.sectionNotifications')}</h2>
+          <h2 className="font-heading text-h2">{t('settings.sectionNotifications')}</h2>
           <div className="mt-4 divide-y divide-line">
             {([
               ['notifyInvite', t('settings.notifyInvite')],
@@ -209,15 +206,16 @@ export default function Settings() {
 
         {/* Danger zone */}
         <Card className="border-danger/30 p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold text-danger">{t('settings.sectionDanger')}</h2>
-          <p className="mt-2 text-[13px] text-muted">{t('settings.deleteAccountDesc')}</p>
+          <h2 className="font-heading text-h2 text-danger">{t('settings.sectionDanger')}</h2>
+          <p className="mt-2 text-body-sm text-muted">{t('settings.deleteAccountDesc')}</p>
           <div className="mt-4">
             <Button variant="danger" onClick={() => setConfirmDelete(true)}>
               <Icon.trash width={16} height={16} /> {t('settings.deleteAccount')}
             </Button>
           </div>
         </Card>
-      </main>
+        </div>
+      </div>
 
       {/* Delete account confirm */}
       <Modal
@@ -238,9 +236,9 @@ export default function Settings() {
           <Field label={t('settings.passwordToConfirm')} htmlFor="delpw">
             <PasswordInput id="delpw" value={deletePw} onChange={(e) => setDeletePw(e.target.value)} autoComplete="current-password" />
           </Field>
-          <p className="text-[12px] text-subtle">{t('settings.ownsProjectsHint')}</p>
+          <p className="text-caption text-subtle">{t('settings.ownsProjectsHint')}</p>
         </div>
       </Modal>
-    </div>
+    </AppShell>
   )
 }
