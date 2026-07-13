@@ -115,7 +115,56 @@ trailing `exec node ...` in that script, instead of the old
 keep the `exec` — dropping it silently breaks graceful shutdown (in-flight
 collab sessions and DB connections get killed instead of drained).
 
-## 7. Known gaps (not blockers, tracked for later)
+## 7. Test sandbox (local, one-command integration + e2e)
+
+Both the integration suite (`apps/api/**/*.int-spec.ts`, real Postgres) and the
+Playwright e2e specs (`e2e/*.spec.ts`, real Postgres + Mailpit + a running
+api/web) previously needed several manual steps and — worse — the documented
+flow pointed them at the **same** Postgres container `npm run dev` uses. Since
+both suites `TRUNCATE` tables between tests, that flow would wipe real local
+dev data the moment someone ran it. `docker-compose.test.yml` fixes this with
+an isolated, disposable stack on different ports, driven by two scripts.
+
+**Prerequisites:** Docker Desktop running. For e2e, additionally: browsers
+installed once (`cd apps/web && npx playwright install chromium`) and ports
+3001/3002/5173 free (stop any running `npm run dev` first — the e2e script
+starts real api/web dev servers on those same ports, just pointed at the
+isolated test-db instead).
+
+```sh
+npm run test:int:local    # ops/scripts/test-int-local.mjs
+npm run test:e2e:local    # ops/scripts/test-e2e-local.mjs
+```
+
+Each script: brings up `docker-compose.test.yml` (`test-db` on `5433`,
+`test-mailpit` on `2025`/`8026` — never `5432`/`1025`/`8025`, so this can run
+**alongside** a normal dev stack without colliding or touching its data) →
+prepares the schema (roles + `prisma migrate deploy`) → runs the suite → tears
+the containers (and, for e2e, the api/web dev servers it started) back down —
+in a `finally`, so a failing test still leaves your machine clean. Pass
+`--keep` (e.g. `npm run test:int:local -- --keep`) to skip teardown and
+inspect the database/servers afterward; tear down by hand with
+`docker compose -f docker-compose.test.yml down -v`.
+
+CI already runs the integration suite in its own job (`.github/workflows/ci.yml`
+→ `api-integration`) against an ephemeral `postgres:16` service — these
+scripts are for **local** runs only and aren't invoked by CI.
+
+**Not done / deliberately deferred:** a CI e2e job. Wiring Playwright into CI
+means installing browser binaries and booting the full api+web stack on every
+PR — real time/flake cost for a suite that's still 3 scaffold specs. Worth
+adding once e2e coverage is broader; tracked here rather than added
+speculatively.
+
+**While wiring this up:** `docker-compose.yml`'s `api` service had
+`JWT_SECRET`/`JWT_REFRESH_SECRET` set to the literal `change-me-...`
+placeholder from `.env.example`. `apps/api/src/config/validate-secrets.ts`
+rejects any secret starting with `"change-me"` at boot — so `docker compose up
+--build` (the README's documented full-stack path) would fail to start `api`.
+Fixed in this pass with non-placeholder (still local-dev-only, not real
+secret) values.
+
+## 8. Known gaps (not blockers, tracked for later)
 
 - No readiness probe distinct from liveness (§4).
 - No structured/aggregated logging (plain NestJS Logger to stdout).

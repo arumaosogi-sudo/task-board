@@ -9,7 +9,9 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "test:int": "npm run test:int --workspace @task-board/api"
+    "test:int": "npm run test:int --workspace @task-board/api",
+    "test:int:local": "node ops/scripts/test-int-local.mjs",
+    "test:e2e:local": "node ops/scripts/test-e2e-local.mjs"
   },
   "devDependencies": {
     "turbo": "^2.3.0"

@@ -49,8 +49,13 @@ services:
       DIRECT_URL: postgresql://taskboard:taskboard@db:5432/taskboard
       WEB_URL: http://localhost:8080
       CORS_ORIGINS: http://localhost:8080
-      JWT_SECRET: change-me-in-production-at-least-32-chars
-      JWT_REFRESH_SECRET: change-me-refresh-at-least-32-chars
+      # NOT the literal "change-me-..." placeholder from .env.example — the API
+      # refuses to boot on that value (apps/api/src/config/validate-secrets.ts
+      # rejects any secret starting with "change-me", found while wiring the
+      # local test sandbox: this compose file's api service would not have
+      # started). These are still local-dev-only, not real secrets.
+      JWT_SECRET: local-dev-docker-compose-jwt-access-secret-not-for-prod
+      JWT_REFRESH_SECRET: local-dev-docker-compose-jwt-refresh-secret-not-for-prod
       JWT_ACCESS_EXPIRES: 15m
       JWT_REFRESH_EXPIRES: 30d
       SMTP_HOST: mailpit

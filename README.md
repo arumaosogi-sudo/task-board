@@ -118,6 +118,10 @@ states).
 
 ### E2E tests (Playwright — needs the live stack)
 
+> **One-command:** `npm run test:e2e:local` boots an isolated test db+mailpit+api+web
+> and tears them down after — see `ops/RUNBOOK.md` §7. The manual steps below still
+> work and are useful for debugging a single spec interactively.
+
 End-to-end specs live in `e2e/` and drive a real browser against a **running stack**
 (Postgres + api + web) plus **Mailpit** for reading verification emails. They are
 **not** part of `npm test` or the default CI run — they only pass with the full stack
@@ -143,6 +147,11 @@ dashboard + invalid-login), `activity.spec.ts` (feed scope toggle), `theme.spec.
 auto-boot the web dev server.
 
 ### Integration tests (real Postgres)
+
+> **One-command:** `npm run test:int:local` boots an isolated, disposable test db
+> (never the one `npm run dev` uses) and tears it down after — see
+> `ops/RUNBOOK.md` §7. The manual steps below still work if you want the db left
+> running between runs (faster iteration while writing a spec).
 
 A separate suite (`apps/api/**/*.int-spec.ts`) runs against a **real** PostgreSQL to
 catch mock/schema drift and verify database-level Row-Level Security — things the
