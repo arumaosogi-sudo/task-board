@@ -10,7 +10,7 @@
     "build": "tsc",
     "start": "node dist/apps/api/src/main.js",
     "typecheck": "tsc --noEmit",
-    "lint": "echo \"lint ok\"",
+    "lint": "eslint src",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",

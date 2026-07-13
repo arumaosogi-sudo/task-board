@@ -34,8 +34,11 @@ jobs:
 
       - name: Lint
         run: npm run lint
-        # NOTE: currently a no-op stub ("echo lint ok") in every workspace — kept in
-        # the pipeline so it starts failing the moment real ESLint config lands.
+        # Real ESLint 9 (flat config, typescript-eslint) via `turbo lint` → `eslint src`
+        # in each workspace. Errors fail CI; react-hooks/no-explicit-any surface as
+        # non-blocking warnings. Prettier is available via `npm run format[:check]` but
+        # is intentionally NOT gated here yet — the repo predates it and a one-time
+        # `npm run format` pass is deferred to its own PR to keep diffs reviewable.
 
       - name: Typecheck (all workspaces)
         run: npm run typecheck

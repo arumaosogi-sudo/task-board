@@ -22,7 +22,6 @@ describe('FilesService — IDOR scoping against a real database', () => {
   const service = new FilesService(prisma as unknown as PrismaService)
 
   let projectA: string
-  let projectB: string
   let fileInA: string
   let fileInB: string
   let deletedFileInA: string
@@ -41,7 +40,6 @@ describe('FilesService — IDOR scoping against a real database', () => {
     const pa = await prisma.project.create({ data: { name: 'Alice Project', ownerId: alice.id } })
     const pb = await prisma.project.create({ data: { name: 'Bob Project', ownerId: bob.id } })
     projectA = pa.id
-    projectB = pb.id
 
     await prisma.membership.create({ data: { projectId: pa.id, userId: alice.id, role: 'Owner' } })
     await prisma.membership.create({ data: { projectId: pb.id, userId: bob.id, role: 'Owner' } })

@@ -2,11 +2,16 @@
   "name": "task-board",
   "private": true,
   "packageManager": "npm@11.8.0",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "test:int": "npm run test:int --workspace @task-board/api",
@@ -14,7 +19,15 @@
     "test:e2e:local": "node ops/scripts/test-e2e-local.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.3.0"
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^9.1.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
+    "prettier": "^3.9.5",
+    "turbo": "^2.3.0",
+    "typescript-eslint": "^8.64.0"
   },
   "engines": {
     "node": ">=20.0.0"

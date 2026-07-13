@@ -1,0 +1,19 @@
+# Off-limits sibling folder (design scratch — not the real app)
+*ไม่ได้เกี่ยวข้องกับตัวจริง*/**
+
+# Build artifacts & deps
+**/node_modules/**
+**/dist/**
+**/build/**
+**/coverage/**
+**/.turbo/**
+
+# Generated / vendored
+apps/api/prisma/migrations/**
+apps/web/playwright-report/**
+apps/web/test-results/**
+
+# Lockfiles & non-source
+package-lock.json
+*.md
+*.snap
