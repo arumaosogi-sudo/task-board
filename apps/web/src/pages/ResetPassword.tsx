@@ -37,7 +37,7 @@ function StrengthBar({ strength, t }: { strength: Strength; t: TFunction }) {
           <div key={i} className={cn('h-1.5 flex-1 rounded-full transition-colors', i < fill ? color : 'bg-line')} />
         ))}
       </div>
-      {strength !== 'none' && <p className={cn('text-[11px] font-medium', labelColor)}>{t('auth.passwordStrength', { level: label })}</p>}
+      {strength !== 'none' && <p className={cn('text-caption font-medium', labelColor)}>{t('auth.passwordStrength', { level: label })}</p>}
     </div>
   )
 }
@@ -75,8 +75,8 @@ export default function ResetPassword() {
       <AuthLayout>
         <Card className="p-6 sm:p-7">
           <div className="space-y-4 text-center">
-            <h1 className="font-heading text-xl font-semibold">{t('auth.invalidLink')}</h1>
-            <p className="text-sm text-muted">{t('auth.noResetToken')}</p>
+            <h1 className="font-heading text-h2">{t('auth.invalidLink')}</h1>
+            <p className="text-body text-muted">{t('auth.noResetToken')}</p>
             <Link to="/forgot-password"><Button full>{t('auth.requestNewResetLink')}</Button></Link>
           </div>
         </Card>
@@ -93,8 +93,8 @@ export default function ResetPassword() {
               <Icon.check width={28} height={28} className="text-success" />
             </div>
             <div className="space-y-1">
-              <h1 className="font-heading text-xl font-semibold">{t('auth.resetSuccess')}</h1>
-              <p className="text-sm text-muted">{t('auth.resetSuccessDesc')}</p>
+              <h1 className="font-heading text-h2">{t('auth.resetSuccess')}</h1>
+              <p className="text-body text-muted">{t('auth.resetSuccessDesc')}</p>
             </div>
             <Link to="/" className="w-full"><Button full>{t('auth.backToSignInButton')}</Button></Link>
           </div>
@@ -107,8 +107,8 @@ export default function ResetPassword() {
     <AuthLayout>
       <Card className="p-6 sm:p-7">
         <div className="mb-6 text-center">
-          <h1 className="font-heading text-[22px] font-semibold">{t('auth.setNewPassword')}</h1>
-          <p className="mt-1 text-sm text-muted">{t('auth.passwordRule')}</p>
+          <h1 className="font-heading text-h2">{t('auth.setNewPassword')}</h1>
+          <p className="mt-1 text-body text-muted">{t('auth.passwordRule')}</p>
         </div>
 
         {error && <div className="mb-4"><Banner tone="error">{error}</Banner></div>}

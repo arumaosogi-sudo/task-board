@@ -44,7 +44,7 @@ export default function AuthCallback() {
           ) : (
             <>
               <span className="size-10 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-sm text-muted">กำลังเข้าสู่ระบบ…</p>
+              <p className="text-body text-muted">กำลังเข้าสู่ระบบ…</p>
             </>
           )}
         </div>

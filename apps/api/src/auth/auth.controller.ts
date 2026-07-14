@@ -10,6 +10,7 @@ import {
   Post,
   Req,
   Res,
+  UseFilters,
   UseGuards,
 } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
@@ -20,6 +21,7 @@ import { GoogleProfile } from './strategies/google.strategy'
 import { JwtGuard } from './guards/jwt.guard'
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard'
 import { GoogleGuard } from './guards/google.guard'
+import { GoogleOAuthExceptionFilter } from './filters/google-oauth.filter'
 import { AuthUser, CurrentUser } from './decorators/current-user.decorator'
 import { RegisterDto } from './dto/register.dto'
 import { LoginDto } from './dto/login.dto'
@@ -155,11 +157,15 @@ export class AuthController {
   /* -------------------------------- google -------------------------------- */
 
   @Get('google')
+  @UseFilters(GoogleOAuthExceptionFilter)
   @UseGuards(GoogleGuard)
   // Passport issues the redirect to Google's consent screen; body never runs.
+  // On failure (e.g. unconfigured) the filter redirects to the web login instead
+  // of leaking API JSON to the browser.
   googleAuth(): void {}
 
   @Get('google/callback')
+  @UseFilters(GoogleOAuthExceptionFilter)
   @UseGuards(GoogleGuard)
   async googleCallback(
     @Req() req: Request & { user: GoogleProfile },

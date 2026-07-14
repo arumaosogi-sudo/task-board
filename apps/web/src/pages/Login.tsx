@@ -1,16 +1,34 @@
-import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { AuthLayout } from '../components/AuthLayout'
 import { Card, Button, Input, PasswordInput, Field, Toggle, Banner } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { api, apiError, API_URL } from '../lib/api'
 
+// The Google OAuth routes redirect here with ?error=<code> when the flow fails
+// (see api GoogleOAuthExceptionFilter), so the user lands on a real page with a
+// banner instead of the API's raw JSON. Map each code to a localized message.
+function googleErrorKey(code: string | null): string | null {
+  switch (code) {
+    case 'google-unconfigured':
+      return 'auth.googleUnconfigured'
+    case 'google-cancelled':
+      return 'auth.googleCancelled'
+    case 'google-failed':
+      return 'auth.googleFailed'
+    default:
+      // Any other google-* code degrades to the generic failure message.
+      return code?.startsWith('google') ? 'auth.googleFailed' : null
+  }
+}
+
 export default function Login() {
   const { t } = useTranslation()
   const { login } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   // Set by flows that bounce through login (e.g. /accept-invite when signed out).
   const next = (location.state as { next?: string } | null)?.next ?? '/home'
 
@@ -18,9 +36,21 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [remember, setRemember] = useState(true)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error, setError] = useState(() => {
+    const key = googleErrorKey(searchParams.get('error'))
+    return key ? t(key) : ''
+  })
   const [needsVerify, setNeedsVerify] = useState(false)
   const [resent, setResent] = useState(false)
+
+  // Strip ?error= from the URL once captured, so a refresh or share doesn't
+  // re-surface the banner. The message is already in state, so this is cosmetic.
+  useEffect(() => {
+    if (!searchParams.has('error')) return
+    const nextParams = new URLSearchParams(searchParams)
+    nextParams.delete('error')
+    setSearchParams(nextParams, { replace: true })
+  }, [searchParams, setSearchParams])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -64,8 +94,8 @@ export default function Login() {
           <div className="mx-auto mb-3 grid size-12 place-items-center rounded-full bg-primary-soft">
             <span className="font-heading text-xl font-bold text-primary">T</span>
           </div>
-          <h1 className="font-heading text-[22px] font-semibold">{t('auth.signInTitle')}</h1>
-          <p className="mt-1 text-sm text-muted">{t('auth.welcomeBack')}</p>
+          <h1 className="font-heading text-h2">{t('auth.signInTitle')}</h1>
+          <p className="mt-1 text-body text-muted">{t('auth.welcomeBack')}</p>
         </div>
 
         {error && (
@@ -112,11 +142,11 @@ export default function Login() {
           </Field>
 
           <div className="flex items-center justify-between">
-            <label className="flex items-center gap-2.5 text-[13px] text-ink cursor-pointer">
+            <label className="flex items-center gap-2.5 text-body-sm text-ink cursor-pointer">
               <Toggle checked={remember} onChange={setRemember} label={t('auth.rememberToggle')} />
               {t('auth.rememberMe')}
             </label>
-            <Link to="/forgot-password" className="text-[13px] font-medium text-primary hover:underline">
+            <Link to="/forgot-password" className="text-body-sm font-medium text-primary hover:underline">
               {t('auth.forgotPassword')}
             </Link>
           </div>
@@ -124,7 +154,7 @@ export default function Login() {
           <Button type="submit" full size="lg" loading={loading}>{t('auth.signIn')}</Button>
         </form>
 
-        <div className="my-5 flex items-center gap-3 text-[12px] text-subtle">
+        <div className="my-5 flex items-center gap-3 text-caption text-subtle">
           <span className="h-px flex-1 bg-line" /> {t('auth.or')} <span className="h-px flex-1 bg-line" />
         </div>
         <Button
@@ -137,7 +167,7 @@ export default function Login() {
           {t('auth.continueGoogle')}
         </Button>
 
-        <p className="mt-6 text-center text-sm text-muted">
+        <p className="mt-6 text-center text-body text-muted">
           {t('auth.newToTaskBoard')}{' '}
           <Link to="/signup" className="font-medium text-primary hover:underline">{t('auth.signUp')}</Link>
         </p>
