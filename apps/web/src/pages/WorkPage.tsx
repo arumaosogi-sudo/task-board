@@ -19,6 +19,8 @@ import {
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
   type FileNode,
 } from '../lib/files'
+import { REPORT_TEMPLATES, templateContent, type TemplateId } from '../lib/templates'
+import type { Language } from '../i18n'
 
 // Lazy-loaded: TipTap + Yjs + Hocuspocus is a heavy bundle (~800KB). Split it out
 // so the file tree / landing shell paints without waiting for the editor chunk.
@@ -110,8 +112,51 @@ function TreeItem({
   )
 }
 
-export default function WorkPage() {
+// Selectable template cards for the "New file" modal. A real radiogroup (roving focus +
+// arrow keys + aria-checked) — not decorative feature cards — per UI_GUIDELINES.
+function TemplatePicker({ value, onChange }: { value: TemplateId; onChange: (v: TemplateId) => void }) {
   const { t } = useTranslation()
+  const onKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    const keys = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']
+    if (!keys.includes(e.key)) return
+    e.preventDefault()
+    const forward = e.key === 'ArrowDown' || e.key === 'ArrowRight'
+    const next = (idx + (forward ? 1 : REPORT_TEMPLATES.length - 1)) % REPORT_TEMPLATES.length
+    onChange(REPORT_TEMPLATES[next].id)
+  }
+  return (
+    <div role="radiogroup" aria-label={t('templates.startFrom')} className="grid grid-cols-2 gap-2">
+      {REPORT_TEMPLATES.map((tpl, idx) => {
+        const active = tpl.id === value
+        return (
+          <button
+            key={tpl.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(tpl.id)}
+            onKeyDown={(e) => onKeyDown(e, idx)}
+            className={cn(
+              'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors',
+              active
+                ? 'border-primary bg-primary-soft/60 shadow-soft'
+                : 'border-line bg-card hover:border-primary/40',
+            )}
+          >
+            <span className={cn('text-body-sm font-semibold', active ? 'text-primary' : 'text-ink')}>
+              {t(tpl.labelKey)}
+            </span>
+            <span className="text-caption leading-snug text-muted">{t(tpl.descKey)}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function WorkPage() {
+  const { t, i18n } = useTranslation()
   const { id = '' } = useParams()
   const { user } = useAuth()
   const { data: project } = useProject(id)
@@ -131,6 +176,7 @@ export default function WorkPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newOrientation, setNewOrientation] = useState<'portrait' | 'landscape'>('portrait')
+  const [newTemplate, setNewTemplate] = useState<TemplateId>('blank')
   const [toDelete, setToDelete] = useState<FileNode | null>(null)
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -139,6 +185,13 @@ export default function WorkPage() {
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const loadedDocId = useRef<string | null>(null)
+
+  // Roster for @mention autocomplete — derived from the already-cached project detail
+  // (no extra request). Shape adapted to what CollabEditor's suggestion needs.
+  const mentionMembers = useMemo(
+    () => (project?.members ?? []).map((m) => ({ id: m.userId, username: m.username, role: m.role })),
+    [project?.members],
+  )
 
   // Auto-snapshot bookkeeping. `lastSnapshotContent` tracks the HTML of the most recent
   // snapshot (seeded from the loaded doc) so we never persist a duplicate; the timer is
@@ -290,7 +343,12 @@ export default function WorkPage() {
       `<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 28px;color:#1d2333;line-height:1.65}` +
       `h1{font-size:24px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px}h2{font-size:19px;margin:20px 0 8px}` +
       `ul,ol{padding-left:24px}a{color:#4f46e5}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
-      `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}</style></head><body>` +
+      `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}` +
+      // Task/checklist blocks — flatten the list bullets and lay the checkbox beside its text.
+      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
+      `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
+      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
+      `ul[data-type="taskList"] li>div>p{margin:0}</style></head><body>` +
       `${body}` +
       `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
     )
@@ -300,14 +358,19 @@ export default function WorkPage() {
   async function submitCreate() {
     if (!newName.trim()) return
     try {
+      // Resolve the template body against the CURRENT UI language (not modal-open time, per
+      // SRS edge case). Blank → omit `content` entirely so the backend keeps its '' default
+      // path byte-for-byte (no regression for the existing blank-document flow).
+      const seed = newTemplate === 'blank' ? undefined : templateContent(newTemplate, i18n.language as Language)
       // Folder creation is disabled — the Work Page only creates Documents now.
       const created = await create.mutateAsync({
         name: newName.trim(),
         kind: 'Document',
         parentId: null,
         orientation: newOrientation,
+        ...(seed ? { content: seed } : {}),
       })
-      setCreateOpen(false); setNewName(''); setNewOrientation('portrait')
+      setCreateOpen(false); setNewName(''); setNewOrientation('portrait'); setNewTemplate('blank')
       if (created.kind === 'Document') setSelectedId(created.id)
     } catch { /* surfaced below via banner-less inline; keep simple */ }
   }
@@ -337,7 +400,7 @@ export default function WorkPage() {
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-caption font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
             {canEdit && (
-              <button onClick={() => { setCreateOpen(true); setNewOrientation('portrait') }}
+              <button onClick={() => { setCreateOpen(true); setNewOrientation('portrait'); setNewTemplate('blank') }}
                 className="grid size-7 place-items-center rounded-lg text-primary hover:bg-primary-soft" aria-label={t('work.createFile')}>
                 <Icon.plus width={16} height={16} />
               </button>
@@ -429,6 +492,7 @@ export default function WorkPage() {
                         onPresenceChange={handlePresence}
                         onStatusChange={handleStatus}
                         onReady={handleReady}
+                        members={mentionMembers}
                       />
                     </Suspense>
                   </EditorErrorBoundary>
@@ -458,6 +522,7 @@ export default function WorkPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title={t('work.createFileTitle')}
+        width="max-w-lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
@@ -472,6 +537,9 @@ export default function WorkPage() {
             <Input id="fn" value={newName} onChange={(e) => setNewName(e.target.value)}
               placeholder={t('work.documentNamePlaceholder')} autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') submitCreate() }} />
+          </Field>
+          <Field label={t('templates.startFrom')}>
+            <TemplatePicker value={newTemplate} onChange={setNewTemplate} />
           </Field>
           <Field label={t('work.orientation')}>
             <Segmented value={newOrientation} onChange={setNewOrientation}

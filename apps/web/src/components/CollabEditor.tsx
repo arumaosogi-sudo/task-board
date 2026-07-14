@@ -13,6 +13,7 @@
 //    successful sync, if the shared Yjs fragment is still empty we seed it once from
 //    `initialContent`. Guarded so it can never run twice (which would duplicate text).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useEditor, EditorContent, BubbleMenu, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Underline from '@tiptap/extension-underline'
@@ -24,6 +25,9 @@ import Table from '@tiptap/extension-table'
 import TableRow from '@tiptap/extension-table-row'
 import TableCell from '@tiptap/extension-table-cell'
 import TableHeader from '@tiptap/extension-table-header'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
+import Mention from '@tiptap/extension-mention'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { HocuspocusProvider } from '@hocuspocus/provider'
@@ -35,6 +39,8 @@ import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
 import { migrateLegacyDrawings, svgToDataUrl } from './editor/drawing'
+import { buildMentionSuggestion } from './editor/mentionSuggestion'
+import type { MentionMember } from './editor/MentionList'
 
 const COLLAB_URL = import.meta.env.VITE_COLLAB_URL || 'ws://localhost:3002'
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024 // 3MB — embedded as a data URL into the doc
@@ -78,6 +84,9 @@ export interface CollabEditorProps {
   onStatusChange?: (status: 'connecting' | 'connected' | 'disconnected') => void
   /** Hands the editor instance to the parent (version-history snapshot + restore). */
   onReady?: (editor: Editor | null) => void
+  /** Project roster for @mention autocomplete. Read live via a ref so the extension is
+   *  created once and never remounts the editor when the list refreshes. */
+  members?: MentionMember[]
 }
 
 type ToolButton = {
@@ -151,9 +160,15 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
 ]
 
 export function CollabEditor({
-  fileId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady,
+  fileId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members,
 }: CollabEditorProps) {
+  const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
+  // Live roster for @mention — the suggestion reads through this ref so a member-list
+  // refetch never forces the editor (and its Yjs binding) to remount.
+  const membersRef = useRef<MentionMember[]>(members ?? [])
+  membersRef.current = members ?? []
+  const getMembers = useCallback(() => membersRef.current, [])
   const seeded = useRef(false)
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   // Re-render the toolbar on selection/content change so active state stays live.
@@ -196,13 +211,24 @@ export function CollabEditor({
     TableRow,
     TableHeader,
     TableCell,
+    // Task/checklist blocks — ProseMirror nodes under the Collaboration extension, so they
+    // round-trip through Yjs / getHTML() / PDF export automatically (precedent: Box.ts).
+    TaskList,
+    TaskItem.configure({ nested: true }),
+    // @mention chips. renderHTML keeps the literal "@username" text so the existing
+    // backend regex (revisions.service.ts) still detects mentions. Suggestion reads the
+    // live roster via getMembers; readOnly viewers never trigger it (not editable).
+    Mention.configure({
+      HTMLAttributes: { class: 'tb-mention' },
+      suggestion: buildMentionSuggestion(getMembers),
+    }),
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Collaboration.configure({ document: ydoc }),
     CollaborationCursor.configure({
       provider,
       user: user ?? { name: 'ผู้ใช้', color: '#6d5bd0' },
     }),
-  ], [ydoc, provider, user])
+  ], [ydoc, provider, user, getMembers])
 
   const editor = useEditor({
     extensions,
@@ -320,6 +346,10 @@ export function CollabEditor({
 
   const insertTable = useCallback(() => {
     editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+  }, [editor])
+
+  const toggleChecklist = useCallback(() => {
+    editor?.chain().focus().toggleTaskList().run()
   }, [editor])
 
   const insertDrawing = useCallback((svg: string) => {
@@ -449,6 +479,17 @@ export function CollabEditor({
               className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
             >
               <Icon.table width={16} height={16} />
+            </button>
+            <button
+              type="button" title={t('tasklist.insert')} aria-label={t('tasklist.insert')}
+              aria-pressed={editor.isActive('taskList')}
+              onMouseDown={(e) => e.preventDefault()} onClick={toggleChecklist}
+              className={cn(
+                'grid h-8 min-w-8 place-items-center rounded-lg px-2',
+                editor.isActive('taskList') ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-ink/5 hover:text-ink',
+              )}
+            >
+              <Icon.checklist width={16} height={16} />
             </button>
           </div>
         </div>

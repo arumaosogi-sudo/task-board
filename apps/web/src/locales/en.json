@@ -187,6 +187,24 @@
     "deleteFolderBody": "“{{name}}” and all files inside will be deleted",
     "saveFailed": "Save failed"
   },
+  "tasklist": {
+    "insert": "Insert checklist"
+  },
+  "mentions": {
+    "listLabel": "Suggested members",
+    "empty": "No members found"
+  },
+  "templates": {
+    "startFrom": "Start from",
+    "blank": "Blank document",
+    "blankDesc": "Start from an empty page",
+    "progress": "Progress report",
+    "progressDesc": "What's done, in progress, and blocked",
+    "meeting": "Meeting notes",
+    "meetingDesc": "Agenda, key points, and action items",
+    "proposal": "Project proposal",
+    "proposalDesc": "Background, objectives, scope, and resources"
+  },
   "projectSettings": {
     "notFound": "Project not found",
     "notFoundDesc": "This Project may have been deleted, or you don't have access",

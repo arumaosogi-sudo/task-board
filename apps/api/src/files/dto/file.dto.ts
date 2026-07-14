@@ -19,6 +19,14 @@ export class CreateFileDto {
   @IsOptional()
   @IsIn(ORIENTATIONS)
   orientation?: (typeof ORIENTATIONS)[number]
+
+  // Initial document body (used to seed a file created from a template). When omitted the
+  // service falls back to '' — keeping the "blank document" path byte-for-byte backward
+  // compatible. Ignored unless `kind === 'Document'`. Same 5MB cap as SaveContentDto.
+  @IsOptional()
+  @IsString()
+  @MaxLength(5_000_000)
+  content?: string
 }
 
 export class UpdateFileDto {

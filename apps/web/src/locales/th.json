@@ -187,6 +187,24 @@
     "deleteFolderBody": "“{{name}}” และไฟล์ทั้งหมดข้างในจะถูกลบ",
     "saveFailed": "บันทึกไม่สำเร็จ"
   },
+  "tasklist": {
+    "insert": "แทรกเช็คลิสต์"
+  },
+  "mentions": {
+    "listLabel": "สมาชิกที่แนะนำ",
+    "empty": "ไม่พบสมาชิก"
+  },
+  "templates": {
+    "startFrom": "เริ่มจาก",
+    "blank": "เอกสารเปล่า",
+    "blankDesc": "เริ่มจากหน้าว่าง",
+    "progress": "รายงานความคืบหน้า",
+    "progressDesc": "สรุปงานที่ทำ กำลังทำ และอุปสรรค",
+    "meeting": "สรุปการประชุม",
+    "meetingDesc": "วาระ ประเด็นสำคัญ และสิ่งที่ต้องทำต่อ",
+    "proposal": "ข้อเสนอโครงการ",
+    "proposalDesc": "ที่มา วัตถุประสงค์ ขอบเขต และทรัพยากร"
+  },
   "projectSettings": {
     "notFound": "ไม่พบ Project",
     "notFoundDesc": "Project นี้อาจถูกลบ หรือไม่มีสิทธิ์เข้าถึง",

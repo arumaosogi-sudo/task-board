@@ -140,6 +140,20 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-prose td, .tb-prose th { @apply relative; }
 .tb-box { @apply my-3 rounded-xl border-l-4 border-primary bg-primary-soft/50 px-4 py-3; }
 
+/* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
+   <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */
+.tb-prose ul[data-type='taskList'] { @apply my-2 list-none pl-0; }
+.tb-prose ul[data-type='taskList'] li { @apply flex items-start gap-2 my-1; }
+.tb-prose ul[data-type='taskList'] li > label { @apply mt-1 flex-shrink-0 select-none; }
+.tb-prose ul[data-type='taskList'] li > div { @apply min-w-0 flex-1; }
+.tb-prose ul[data-type='taskList'] li > div > p { @apply my-0; }
+.tb-prose ul[data-type='taskList'] input[type='checkbox'] { @apply size-4 cursor-pointer accent-primary; }
+/* Checked items read as "done": dim + strike the text so status is scannable. */
+.tb-prose ul[data-type='taskList'] li[data-checked='true'] > div { @apply text-muted line-through; }
+
+/* @mention chip (Sprint 4). Inline atom; primary-soft ground keeps it on-brand in both modes. */
+.tb-prose .tb-mention { @apply rounded bg-primary-soft px-1 py-0.5 font-medium text-primary; }
+
 /* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
 .tb-prose:focus { outline: none; }
 .ProseMirror { cursor: text; }

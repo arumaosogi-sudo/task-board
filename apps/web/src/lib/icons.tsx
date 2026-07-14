@@ -33,6 +33,7 @@ export const Icon = {
   italic: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M19 4h-9M14 20H5M15 4 9 20" /></svg>),
   underline: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M6 4v6a6 6 0 0 0 12 0V4M4 21h16" /></svg>),
   list: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" /></svg>),
+  checklist: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M3 5.5 4.5 7 7 4M3 12l1.5 1.5L7 11M3 18.5 4.5 20 7 17M11 6h10M11 12h10M11 18h10" /></svg>),
   table: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18M15 3v18" /></svg>),
   alignLeft: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 6h16M4 12h10M4 18h13" /></svg>),
   alignCenter: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 6h16M7 12h10M6 18h12" /></svg>),
