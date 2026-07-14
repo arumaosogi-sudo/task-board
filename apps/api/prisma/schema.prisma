@@ -38,6 +38,10 @@ model User {
 
   // Phase 5 — Notifications
   notifications Notification[]
+
+  // Sprint 4 — Comments
+  comments         Comment[] @relation("CommentAuthor")
+  resolvedComments Comment[] @relation("CommentResolver")
 }
 
 model UserSetting {
@@ -52,6 +56,8 @@ model UserSetting {
   notifyInvite   Boolean @default(true)
   notifyMention  Boolean @default(true)
   notifyRevision Boolean @default(true)
+  // Sprint 4 — gates both Comment and CommentReply notifications (single toggle in v1).
+  notifyComment  Boolean @default(true)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
@@ -192,6 +198,7 @@ model File {
   parent    File?      @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
   children  File[]     @relation("FileTree")
   revisions Revision[]
+  comments  Comment[]
 
   @@index([projectId])
   @@index([parentId])
@@ -207,8 +214,9 @@ model Revision {
   label     String? // optional user-set label ("v1.0", "before review", …)
   createdAt DateTime @default(now())
 
-  file   File @relation(fields: [fileId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id])
+  file     File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  author   User      @relation(fields: [authorId], references: [id])
+  comments Comment[]
 
   @@index([fileId])
 }
@@ -219,6 +227,8 @@ enum NotificationType {
   ProjectInvite // added to / invited to a project
   Mention // @mentioned inside a document
   Revision // a new version was saved in a project you belong to
+  Comment // a new comment was posted on a file in a project you belong to
+  CommentReply // someone replied to a comment thread you started
 }
 
 model Notification {
@@ -235,4 +245,45 @@ model Notification {
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+}
+
+// ─────────────────────────── Sprint 4: Comments ─────────────────────────────
+
+model Comment {
+  id       String  @id @default(cuid())
+  fileId   String
+  authorId String
+  // null = root of a thread. Non-null = a reply. Reply depth is capped at 1 level
+  // at the application layer (a reply's parent must itself be a root).
+  parentId String?
+  body     String  @db.Text // plain-text comment, max 5000 chars (validated at the DTO)
+
+  // Anchor to the highlighted range in the live Yjs document. Stored as serialized
+  // Yjs RelativePosition (survives concurrent edits). Null on replies (they inherit
+  // the root's anchor) and tolerated when a client posts an unanchored comment.
+  anchorFrom Json?
+  anchorTo   Json?
+  // Plain-text snapshot of the highlighted range at creation — fallback label shown
+  // in the panel when the anchor can no longer be resolved (orphaned comment).
+  anchorText String?
+  // Revision the document was on when this comment was made. Used to detect orphaning
+  // after a restore (Open Decision #1, option (a)). SetNull so pruning old revisions
+  // never deletes the comment.
+  sourceRevisionId String?
+
+  resolvedAt   DateTime?
+  resolvedById String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  file       File      @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  author     User      @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  resolvedBy User?     @relation("CommentResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  parent     Comment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies    Comment[] @relation("CommentThread")
+  revision   Revision? @relation(fields: [sourceRevisionId], references: [id], onDelete: SetNull)
+
+  @@index([fileId]) // list all comments for a file
+  @@index([fileId, resolvedAt]) // filter all / unresolved / resolved fast
+  @@index([parentId]) // load a thread's replies
 }

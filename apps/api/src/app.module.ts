@@ -9,6 +9,7 @@ import { MailModule } from './mail/mail.module'
 import { AuthModule } from './auth/auth.module'
 import { ProjectsModule } from './projects/projects.module'
 import { FilesModule } from './files/files.module'
+import { CommentsModule } from './comments/comments.module'
 import { CollabModule } from './collab/collab.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { SearchModule } from './search/search.module'
@@ -26,6 +27,7 @@ import { UpdatesModule } from './updates/updates.module'
     AuthModule,
     ProjectsModule,
     FilesModule,
+    CommentsModule,
     CollabModule,
     NotificationsModule,
     SearchModule,
