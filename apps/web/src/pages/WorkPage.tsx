@@ -172,6 +172,9 @@ export default function WorkPage() {
   const save = useSaveContent(id, selectedId ?? '')
 
   const [content, setContent] = useState('')
+  // Serialized <svg> of the inline drawing layer (ADR 0005) — kept out of `content`
+  // (getHTML) to avoid the legacy-seed duplication path; injected into the PDF export.
+  const [drawingsSvg, setDrawingsSvg] = useState('')
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -251,7 +254,7 @@ export default function WorkPage() {
       // Baseline the autosave flush against the loaded content — nothing to flush yet.
       savedContentRef.current = doc.content
     }
-    setPresence([]); setConnStatus('connecting')
+    setPresence([]); setConnStatus('connecting'); setDrawingsSvg('')
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced autosave (800ms) — only after the user edits the loaded content.
@@ -348,8 +351,13 @@ export default function WorkPage() {
       `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
       `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
       `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
-      `ul[data-type="taskList"] li>div>p{margin:0}</style></head><body>` +
-      `${body}` +
+      `ul[data-type="taskList"] li>div>p{margin:0}` +
+      // Inline drawing layer (ADR 0005 D5). The print body is a single flowing column,
+      // not paginated A4, so the overlay is positioned relative to the whole document —
+      // shapes/relative position are preserved (owner-accepted limitation), text may not
+      // align. The wrapper is position:relative so the absolute SVG anchors to it.
+      `.tb-print-wrap{position:relative}</style></head><body>` +
+      `<div class="tb-print-wrap">${body}${drawingsSvg}</div>` +
       `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
     )
     w.document.close()
@@ -494,6 +502,7 @@ export default function WorkPage() {
                         onStatusChange={handleStatus}
                         onReady={handleReady}
                         members={mentionMembers}
+                        onDrawingsSvgChange={setDrawingsSvg}
                       />
                     </Suspense>
                   </EditorErrorBoundary>

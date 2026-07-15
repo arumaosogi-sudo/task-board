@@ -37,11 +37,12 @@ import { cn } from '../lib/cn'
 import { Icon } from '../lib/icons'
 import { apiError } from '../lib/api'
 import { FilesApi } from '../lib/files'
-import { DrawingCanvas } from './DrawingCanvas'
 import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
 import { migrateLegacyDrawings } from './editor/drawing'
+import { DrawingOverlay } from './editor/DrawingOverlay'
+import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
 import { buildMentionSuggestion } from './editor/mentionSuggestion'
 import type { MentionMember } from './editor/MentionList'
 
@@ -111,7 +112,17 @@ export interface CollabEditorProps {
   /** Project roster for @mention autocomplete. Read live via a ref so the extension is
    *  created once and never remounts the editor when the list refreshes. */
   members?: MentionMember[]
+  /** Serialized <svg> of the inline drawing layer — emitted on stroke change so the parent
+   *  can inject it into the PDF export (ADR 0005 D5; drawings live outside getHTML). */
+  onDrawingsSvgChange?: (svg: string) => void
 }
+
+/** Draw-mode tools surfaced in the toolbar (SPEC งานที่ 2). */
+const DRAW_TOOLS: { key: DrawTool; titleKey: string; icon: keyof typeof Icon }[] = [
+  { key: 'pen', titleKey: 'editor.pen', icon: 'pencil' },
+  { key: 'highlighter', titleKey: 'editor.highlighter', icon: 'highlighter' },
+  { key: 'eraser', titleKey: 'editor.eraser', icon: 'eraser' },
+]
 
 type ToolButton = {
   key: string
@@ -179,7 +190,7 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
 ]
 
 export function CollabEditor({
-  fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members,
+  fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
 }: CollabEditorProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -193,7 +204,11 @@ export function CollabEditor({
   // Re-render the toolbar on selection/content change so active state stays live.
   const [, forceTick] = useState(0)
   const [synced, setSynced] = useState(false)
-  const [drawOpen, setDrawOpen] = useState(false)
+  // Inline drawing tool state (SPEC งานที่ 2) — local UI, never synced. The strokes
+  // themselves live in a Y.Array (DrawingOverlay), synced + persisted with the doc.
+  const [drawTool, setDrawTool] = useState<DrawTool>('pen')
+  const [drawColor, setDrawColor] = useState(DRAW_COLORS[0])
+  const [drawSize, setDrawSize] = useState(DRAW_SIZES[2])
   // Toolbar mode (SPEC B) — local UI state, never synced to peers. Always starts on "write".
   const [mode, setMode] = useState<EditorMode>('write')
   // In-flight / failed image uploads (SPEC A1) — local, never enter the Yjs CRDT.
@@ -219,11 +234,20 @@ export function CollabEditor({
     return { ydoc, provider }
   })
 
+  // Dedicated UndoManager for the inline drawing layer (ADR 0005 D4). Scoped to the
+  // `drawings` Y.Array and tracking only local ink edits (DRAW_ORIGIN), so undo/redo in
+  // draw mode reverts *my* last stroke and never a peer's — separate from the text
+  // (y-prosemirror) undo stack.
+  const [drawUndo] = useState(() =>
+    new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) }),
+  )
+
   // Tear down the socket + doc on unmount so switching files doesn't leak connections.
   useEffect(() => () => {
+    drawUndo.destroy()
     provider.destroy()
     ydoc.destroy()
-  }, [provider, ydoc])
+  }, [drawUndo, provider, ydoc])
 
   const extensions = useMemo(() => [
     // History off: the Collaboration extension provides Yjs-backed undo/redo instead.
@@ -449,20 +473,25 @@ export function CollabEditor({
   }, [startUpload])
 
   // Re-render the undo/redo buttons when the Yjs undo/redo stacks change (SPEC A2 #4).
+  // Covers both the text UndoManager (y-prosemirror) and the drawing UndoManager so the
+  // shared toolbar buttons reflect whichever stack the current mode drives.
   useEffect(() => {
     if (!editor) return
-    const manager = yUndoPluginKey.getState(editor.state)?.undoManager
-    if (!manager) return
     const tick = () => forceTick((n) => n + 1)
-    manager.on('stack-item-added', tick)
-    manager.on('stack-item-popped', tick)
-    manager.on('stack-cleared', tick)
-    return () => {
-      manager.off('stack-item-added', tick)
-      manager.off('stack-item-popped', tick)
-      manager.off('stack-cleared', tick)
+    const managers = [yUndoPluginKey.getState(editor.state)?.undoManager, drawUndo].filter(Boolean) as Y.UndoManager[]
+    for (const m of managers) {
+      m.on('stack-item-added', tick)
+      m.on('stack-item-popped', tick)
+      m.on('stack-cleared', tick)
     }
-  }, [editor])
+    return () => {
+      for (const m of managers) {
+        m.off('stack-item-added', tick)
+        m.off('stack-item-popped', tick)
+        m.off('stack-cleared', tick)
+      }
+    }
+  }, [editor, drawUndo])
 
   // Abort any in-flight uploads on unmount (no orphaned requests / setState-after-unmount).
   useEffect(() => {
@@ -488,10 +517,24 @@ export function CollabEditor({
     editor?.chain().focus().toggleTaskList().run()
   }, [editor])
 
-  // Drawing arrives as a rasterized PNG Blob → same upload path as picked images.
-  const insertDrawing = useCallback((png: Blob) => {
-    startUpload(png, 'drawing.png')
-  }, [startUpload])
+  const clearDrawing = useCallback(() => {
+    const arr = ydoc.getArray('drawings')
+    if (arr.length > 0) ydoc.transact(() => arr.delete(0, arr.length), DRAW_ORIGIN)
+  }, [ydoc])
+
+  // In draw mode, Ctrl+Z / Ctrl+Y drive the *drawing* undo stack (the editor's own keymap
+  // targets text). Capture-phase so we win before ProseMirror sees the key.
+  useEffect(() => {
+    if (mode !== 'draw' || readOnly) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); drawUndo.undo() }
+      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); e.stopPropagation(); drawUndo.redo() }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [mode, readOnly, drawUndo])
 
   if (!editor) return null
 
@@ -500,14 +543,19 @@ export function CollabEditor({
      under Collaboration, which returns false spuriously), so the buttons can be
      correctly disabled instead of silently no-op'ing. Ctrl+Z / Ctrl+Y keep working
      via the Collaboration extension's own keymap. */
+  // Undo/redo target follows the active mode: in draw mode they drive the drawing
+  // UndoManager (ADR 0005 D4); otherwise the text (y-prosemirror) stack.
   const undoManager = yUndoPluginKey.getState(editor.state)?.undoManager
-  const canUndo = (undoManager?.undoStack.length ?? 0) > 0
-  const canRedo = (undoManager?.redoStack.length ?? 0) > 0
+  const drawingMode = mode === 'draw'
+  const canUndo = drawingMode ? drawUndo.undoStack.length > 0 : (undoManager?.undoStack.length ?? 0) > 0
+  const canRedo = drawingMode ? drawUndo.redoStack.length > 0 : (undoManager?.redoStack.length ?? 0) > 0
   const doUndo = () => {
+    if (drawingMode) { drawUndo.undo(); return }
     const e = editorRef.current
     if (e) { yUndo(e.state); e.view.focus() }
   }
   const doRedo = () => {
+    if (drawingMode) { drawUndo.redo(); return }
     const e = editorRef.current
     if (e) { yRedo(e.state); e.view.focus() }
   }
@@ -676,16 +724,75 @@ export function CollabEditor({
             )}
 
             {mode === 'draw' && (
-              <div id="toolbar-row-draw" role="tabpanel" aria-labelledby="tab-draw" className="flex items-center">
+              <div id="toolbar-row-draw" role="tabpanel" aria-labelledby="tab-draw" className="flex items-center gap-0.5">
+                {/* Tools: pen / highlighter / eraser */}
+                {DRAW_TOOLS.map((tl) => {
+                  const IconCmp = Icon[tl.icon]
+                  const activeTool = drawTool === tl.key
+                  return (
+                    <button
+                      key={tl.key}
+                      type="button" title={t(tl.titleKey)} aria-label={t(tl.titleKey)}
+                      aria-pressed={activeTool}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawTool(tl.key)}
+                      className={cn(btnBase, 'flex-shrink-0', activeTool ? 'bg-primary-soft text-primary' : btnIdle)}
+                    >
+                      <IconCmp width={16} height={16} />
+                    </button>
+                  )
+                })}
+                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+
+                {/* Ink colors + free picker */}
+                <div className="flex flex-shrink-0 items-center gap-1">
+                  {DRAW_COLORS.map((c) => (
+                    <button
+                      key={c} type="button" aria-label={`${t('editor.penColor')} ${c}`}
+                      aria-pressed={drawColor === c}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawColor(c)}
+                      className={cn(
+                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition',
+                        c === '#ffffff' && 'border border-line',
+                        drawColor === c && 'ring-2 ring-primary',
+                      )}
+                      style={{ background: c }}
+                    />
+                  ))}
+                  <label
+                    className="grid size-6 flex-shrink-0 cursor-pointer place-items-center rounded-full border border-line"
+                    title={t('editor.penColor')} style={{ background: drawColor }}
+                  >
+                    <input
+                      type="color" value={drawColor} onChange={(e) => setDrawColor(e.target.value)}
+                      className="size-0 opacity-0" aria-label={t('editor.penColor')}
+                    />
+                  </label>
+                </div>
+                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+
+                {/* Brush sizes */}
+                <div className="flex flex-shrink-0 items-center gap-0.5" role="group" aria-label={t('editor.brushSize')}>
+                  {DRAW_SIZES.map((s) => (
+                    <button
+                      key={s} type="button" title={`${t('editor.brushSize')} ${s}`} aria-label={`${t('editor.brushSize')} ${s}`}
+                      aria-pressed={drawSize === s}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawSize(s)}
+                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
+                    >
+                      <span className="rounded-full bg-ink" style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
+                    </button>
+                  ))}
+                </div>
+                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+
                 <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawOpen(true)}
-                  className="flex h-8 flex-shrink-0 items-center gap-2 rounded-lg bg-ink/5 px-3 text-[13px] font-medium text-ink hover:bg-ink/10"
+                  type="button" title={t('editor.clearDrawing')} aria-label={t('editor.clearDrawing')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={clearDrawing}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle)}
                 >
-                  <Icon.pencil width={16} height={16} />
-                  {t('editor.openDraw')}
-                  <span className="text-[12px] text-muted">{t('editor.stylusHint')}</span>
+                  <Icon.trash width={16} height={16} />
                 </button>
+                <span className="ml-1 flex-shrink-0 text-[12px] text-muted">{t('editor.stylusHint')}</span>
               </div>
             )}
 
@@ -773,7 +880,6 @@ export function CollabEditor({
       )}
 
       <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onImagePick} />
-      <DrawingCanvas open={drawOpen} onClose={() => setDrawOpen(false)} onInsert={insertDrawing} orientation={orientation} />
 
       {/* SPEC 4 — Table controls, shown only while the caret sits inside a table. */}
       {!readOnly && (
@@ -805,9 +911,21 @@ export function CollabEditor({
         </BubbleMenu>
       )}
 
-      {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin. */}
+      {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin.
+          The drawing overlay (ADR 0005) sits absolutely over this same box; .tb-page is
+          already position:relative. Pointer capture is on only in draw mode. */}
       <div className={cn('tb-page', orientation === 'landscape' ? 'tb-page--landscape' : 'tb-page--portrait')}>
         <EditorContent editor={editor} />
+        <DrawingOverlay
+          ydoc={ydoc}
+          active={mode === 'draw' && !readOnly}
+          readOnly={readOnly}
+          orientation={orientation}
+          tool={drawTool}
+          color={drawColor}
+          size={drawSize}
+          onStrokesChange={onDrawingsSvgChange}
+        />
       </div>
     </div>
   )
