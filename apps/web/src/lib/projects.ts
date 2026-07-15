@@ -85,7 +85,11 @@ export function useDeleteProject() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (id: string) => ProjectsApi.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.list() }),
+    // Soft delete moves the project into trash — refresh both lists so Trash isn't stale.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: projectKeys.list() })
+      qc.invalidateQueries({ queryKey: projectKeys.trash() })
+    },
   })
 }
 
@@ -103,7 +107,9 @@ export function useProject(id: string) {
 }
 
 export function useTrash() {
-  return useQuery({ queryKey: projectKeys.trash(), queryFn: ProjectsApi.trash })
+  // Always refetch on mount: trash is visited rarely and a stale/empty cache here is
+  // confusing (the global 30s staleTime would otherwise serve a stale list).
+  return useQuery({ queryKey: projectKeys.trash(), queryFn: ProjectsApi.trash, refetchOnMount: 'always' })
 }
 
 export function useUpdateProject(id: string) {

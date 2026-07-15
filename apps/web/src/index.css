@@ -140,9 +140,38 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-prose td, .tb-prose th { @apply relative; }
 .tb-box { @apply my-3 rounded-xl border-l-4 border-primary bg-primary-soft/50 px-4 py-3; }
 
+/* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
+   <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */
+.tb-prose ul[data-type='taskList'] { @apply my-2 list-none pl-0; }
+.tb-prose ul[data-type='taskList'] li { @apply flex items-start gap-2 my-1; }
+.tb-prose ul[data-type='taskList'] li > label { @apply mt-1 flex-shrink-0 select-none; }
+.tb-prose ul[data-type='taskList'] li > div { @apply min-w-0 flex-1; }
+.tb-prose ul[data-type='taskList'] li > div > p { @apply my-0; }
+.tb-prose ul[data-type='taskList'] input[type='checkbox'] { @apply size-4 cursor-pointer accent-primary; }
+/* Checked items read as "done": dim + strike the text so status is scannable. */
+.tb-prose ul[data-type='taskList'] li[data-checked='true'] > div { @apply text-muted line-through; }
+
+/* @mention chip (Sprint 4). Inline atom; primary-soft ground keeps it on-brand in both modes. */
+.tb-prose .tb-mention { @apply rounded bg-primary-soft px-1 py-0.5 font-medium text-primary; }
+
 /* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
 .tb-prose:focus { outline: none; }
-.tb-prose .ProseMirror-selectednode { @apply rounded-lg outline outline-2 outline-primary; }
+.ProseMirror { cursor: text; }
+.ProseMirror img { cursor: default; }
+
+/* Google Docs feel: no chrome around a selected node. ProseMirror adds
+   `.ProseMirror-selectednode` whenever a NodeSelection is active (image, box,
+   drawing, …); we strip its outline/box-shadow entirely. Selection affordance for
+   images is provided by the node view's own resize handles, not a border. */
+.tb-prose .ProseMirror-selectednode {
+  outline: none !important;
+  box-shadow: none !important;
+}
+/* Text selection — soft light-blue highlight, no border (Google Docs style). */
+.tb-prose ::selection {
+  background-color: rgba(26, 115, 232, 0.25);
+  color: inherit;
+}
 /* Text alignment (TipTap TextAlign writes inline text-align; keep block flow intact). */
 .tb-prose [style*='text-align:center'] { text-align: center; }
 .tb-prose [style*='text-align:right'] { text-align: right; }
@@ -151,14 +180,32 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 /* The editable content sits on a physical-size white page. Padding is the 1-inch page
    margin (96px @ 96dpi). Text is forced dark so the page stays readable in dark mode. */
 .tb-page {
-  background: #fff;
   margin: 0 auto;
   padding: 96px;
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 12px 40px rgb(0 0 0 / 0.18);
   border-radius: 2px;
+  position: relative;
+  /* Page height drives where the visual page-break gap is painted. */
+  --page-h: 1123px;
+  /* repeating-linear-gradient: white content area, a thin rule + a grey gap between pages.
+     This is background only (no extra element), so editable content still receives clicks. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      #fff 0,
+      #fff calc(var(--page-h) - 1px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) - 1px),
+      rgba(0, 0, 0, 0.08) var(--page-h),
+      #f0f0f0 var(--page-h),
+      #f0f0f0 calc(var(--page-h) + 20px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) + 20px),
+      rgba(0, 0, 0, 0.08) calc(var(--page-h) + 21px),
+      #fff calc(var(--page-h) + 21px)
+    );
+  background-size: 100% calc(var(--page-h) + 21px);
 }
-.tb-page--portrait  { width: 794px;  min-height: 1123px; }
-.tb-page--landscape { width: 1123px; min-height: 794px;  }
+.tb-page--portrait  { width: 794px;  min-height: var(--page-h); --page-h: 1123px; }
+.tb-page--landscape { width: 1123px; min-height: 794px;         --page-h: 794px; }
 .tb-page .tb-prose  { color: #1d2333; }
 
 @media (max-width: 900px) {
@@ -168,7 +215,8 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 /* ---- Resizable image (SPEC 3) ---- */
 .tb-img-wrap { position: relative; display: inline-block; line-height: 0; }
 .tb-img-wrap img { max-width: 100%; border-radius: 8px; }
-.tb-img-wrap[data-selected='true'] img { outline: 2px solid #7c5cff; }
+/* Google Docs style: no border/outline on the selected image — the corner resize
+   handle (rendered by the node view) is the only selection affordance. */
 .tb-img-handle {
   position: absolute;
   right: -6px;

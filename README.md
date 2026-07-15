@@ -92,6 +92,90 @@ npm run build       # tsc (api) + vite build (web)
 The web build code-splits the collaborative editor (TipTap + Yjs) into its own lazy
 chunk, so the app shell paints without waiting for the ~470 KB editor bundle.
 
+## Testing
+
+```bash
+npm test          # unit tests, all workspaces (mock Prisma — no DB needed)
+```
+
+### Web unit / component tests (Vitest + RTL)
+
+The web app is tested with **Vitest + React Testing Library** (jsdom). These are part
+of `npm test`; React Query hooks, the router, and IO-bearing collaborators are mocked
+so **no backend, DB, or browser is required**.
+
+```bash
+cd apps/web
+npx vitest run          # one-shot (what CI + `npm test` run)
+npm run test:watch      # watch mode while developing
+npm run test:cov        # with coverage report
+```
+
+Covers: `lib/htmlDiff`, the `ui.tsx` primitives (`Button`, `Card`, `Segmented`,
+`Skeleton`, `Tag`, `EmptyState`), the `AppShell` navigation rail (active-state per
+route), and the consolidated `/activity` page (scope gating + empty/error/loading
+states).
+
+### E2E tests (Playwright — needs the live stack)
+
+> **One-command:** `npm run test:e2e:local` boots an isolated test db+mailpit+api+web
+> and tears them down after — see `ops/RUNBOOK.md` §7. The manual steps below still
+> work and are useful for debugging a single spec interactively.
+
+End-to-end specs live in `e2e/` and drive a real browser against a **running stack**
+(Postgres + api + web) plus **Mailpit** for reading verification emails. They are
+**not** part of `npm test` or the default CI run — they only pass with the full stack
+up, so run them locally like this:
+
+```bash
+# 1. Bring up db + mailpit + api + web (Mailpit HTTP UI/API on :8025)
+docker compose up -d db mailpit
+npm run dev                    # api :3001 · collab :3002 · web :5173
+
+# 2. Install browser binaries once
+cd apps/web && npx playwright install chromium
+
+# 3. Run the specs from the repo root
+npx playwright test            # or: npm run test:e2e -w @task-board/web
+```
+
+Config: `playwright.config.ts` (`baseURL` defaults to `http://localhost:5173`,
+override with `E2E_WEB_URL`; Mailpit URL via `E2E_MAILPIT_URL`, default
+`http://localhost:8025`). Specs: `auth.spec.ts` (register → verify → login →
+dashboard + invalid-login), `activity.spec.ts` (feed scope toggle), `theme.spec.ts`
+(dark/light switch). Uncomment the `webServer` block in the config to have Playwright
+auto-boot the web dev server.
+
+### Integration tests (real Postgres)
+
+> **One-command:** `npm run test:int:local` boots an isolated, disposable test db
+> (never the one `npm run dev` uses) and tears it down after — see
+> `ops/RUNBOOK.md` §7. The manual steps below still work if you want the db left
+> running between runs (faster iteration while writing a spec).
+
+A separate suite (`apps/api/**/*.int-spec.ts`) runs against a **real** PostgreSQL to
+catch mock/schema drift and verify database-level Row-Level Security — things the
+Prisma-mocking unit tests can't see. It is **excluded from `npm test`** on purpose, so
+the default suite stays DB-free.
+
+```bash
+# 1. Start a disposable local Postgres (docker-compose service `db`)
+docker compose up -d db
+
+# 2. Point the tests at it via TEST_DATABASE_URL (NEVER DATABASE_URL / Supabase —
+#    the suite TRUNCATEs every table between tests). Guards refuse to run otherwise.
+export TEST_DATABASE_URL=postgresql://taskboard:taskboard@localhost:5432/taskboard
+
+# 3. Run it. The suite auto-creates the anon/authenticated roles, runs
+#    `prisma migrate deploy` against the test DB, then runs the specs serially.
+npm run test:int
+```
+
+> Windows PowerShell: `$env:TEST_DATABASE_URL = 'postgresql://taskboard:taskboard@localhost:5432/taskboard'`
+
+In CI these run in a dedicated **`API integration tests (real Postgres)`** job with an
+ephemeral `postgres:16` service container (see `.github/workflows/ci.yml`).
+
 ## Deploy (Docker)
 
 Both images build from the **repo root** (workspaces + `packages/shared` must resolve).

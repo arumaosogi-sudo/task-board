@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import {
-  Avatar, Banner, Button, Card, Field, Input, Menu, MenuItem, Modal, Segmented, Tag,
+  Avatar, Banner, Button, Card, Field, Input, Menu, MenuItem, Modal, Segmented, Skeleton, Tag,
 } from '../components/ui'
 import { Icon } from '../lib/icons'
 import { useAuth } from '../lib/auth'
@@ -49,7 +49,26 @@ export default function ProjectSettings() {
   }, [project?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (isLoading) {
-    return <div className="grid min-h-screen place-items-center bg-paper"><span className="size-7 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>
+    return (
+      <div className="min-h-screen bg-paper">
+        <header className="flex h-16 items-center gap-3 border-b border-line px-5 sm:px-8">
+          <div className="grid size-9 place-items-center rounded-lg text-muted"><Icon.arrowLeft width={18} height={18} /></div>
+          <div className="min-w-0 flex-1 space-y-1.5">
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-3 w-28" />
+          </div>
+        </header>
+        <main className="mx-auto max-w-3xl space-y-6 px-5 py-8 sm:px-8">
+          {[0, 1].map((i) => (
+            <Card key={i} className="space-y-4 p-5 sm:p-6">
+              <Skeleton className="h-5 w-32" />
+              <Skeleton className="h-11 w-full rounded-xl" />
+              <Skeleton className="h-11 w-full rounded-xl" />
+            </Card>
+          ))}
+        </main>
+      </div>
+    )
   }
   if (isError || !project) {
     return (
@@ -88,8 +107,8 @@ export default function ProjectSettings() {
   return (
     <div className="min-h-screen bg-paper">
       <header className="flex h-16 items-center gap-3 border-b border-line px-5 sm:px-8">
-        <Link to="/home" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('common.back')}>
-          <Icon.logout width={18} height={18} className="rotate-180" />
+        <Link to={`/projects/${id}/work`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('common.back')}>
+          <Icon.arrowLeft width={18} height={18} />
         </Link>
         <div className="min-w-0">
           <h1 className="truncate font-heading text-[15px] font-semibold">{project.name}</h1>
@@ -102,7 +121,7 @@ export default function ProjectSettings() {
 
         {/* General */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('projectSettings.general')}</h2>
+          <h2 className="font-heading text-h2">{t('projectSettings.general')}</h2>
           <div className="mt-4 space-y-4">
             <Field label={t('project.nameLabel')} htmlFor="pn">
               <Input id="pn" value={name} onChange={(e) => setName(e.target.value)} disabled={!canEdit} maxLength={120} />
@@ -120,7 +139,7 @@ export default function ProjectSettings() {
 
         {/* Members */}
         <Card className="p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold">{t('projectSettings.membersCount', { count: project.members.length })}</h2>
+          <h2 className="font-heading text-h2">{t('projectSettings.membersCount', { count: project.members.length })}</h2>
 
           {isOwner && (
             <div className="mt-4 flex flex-col gap-2 rounded-xl bg-paper p-3 sm:flex-row sm:items-end">
@@ -175,7 +194,7 @@ export default function ProjectSettings() {
 
         {/* Danger zone */}
         <Card className="border-danger/30 p-5 sm:p-6">
-          <h2 className="font-heading text-base font-semibold text-danger">{t('settings.sectionDanger')}</h2>
+          <h2 className="font-heading text-h2 text-danger">{t('settings.sectionDanger')}</h2>
           <div className="mt-4 flex flex-wrap gap-3">
             {!isOwner && (
               <Button variant="secondary" onClick={() => setConfirmLeave(true)}>

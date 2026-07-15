@@ -29,14 +29,14 @@ function ProjectCard({ p, onDelete, onLeave }: {
   const navigate = useNavigate()
   const isOwner = p.myRole === 'Owner'
   return (
-    <Card className="group relative flex cursor-pointer flex-col border-line/80 transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-pop">
+    <Card interactive className="group relative flex flex-col border-line/80">
       {/* Header bar. The title carries a stretched-link overlay (after:absolute
           after:inset-0) so clicking anywhere on the card navigates to the Work
           page — one keyboard-accessible anchor, no JS event bubbling needed. */}
       <div className="flex items-center justify-between gap-2 rounded-t-xl bg-primary px-4 py-3">
         <Link
           to={`/projects/${p.id}/work`}
-          className="min-w-0 flex-1 truncate font-heading text-[15px] font-semibold text-primary-fg after:absolute after:inset-0 after:content-[''] focus-visible:underline focus-visible:outline-none"
+          className="min-w-0 flex-1 truncate font-heading text-h3 text-primary-fg after:absolute after:inset-0 after:content-[''] focus-visible:underline focus-visible:outline-none"
         >
           {p.name}
         </Link>
@@ -87,17 +87,17 @@ function ProjectCard({ p, onDelete, onLeave }: {
         </div>
       </div>
       <div className="flex flex-1 flex-col p-4">
-        <p className="line-clamp-3 min-h-[3.6rem] text-[13.5px] leading-relaxed text-muted">
+        <p className="line-clamp-3 min-h-[3.6rem] text-body-sm leading-relaxed text-muted">
           {p.description || <span className="text-subtle">{t('project.noDescription')}</span>}
         </p>
         <div className="mt-4 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             <Avatar initial={p.owner.username.charAt(0).toUpperCase()} size={24} />
-            <span className="truncate text-[12px] text-muted">{t('project.ownerLabel')} <b className="font-medium text-ink">{p.owner.username}</b></span>
+            <span className="truncate text-caption text-muted">{t('project.ownerLabel')} <b className="font-medium text-ink">{p.owner.username}</b></span>
           </div>
           <span className="shrink-0 rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">{p.myRole}</span>
         </div>
-        <div className="mt-3 flex items-center gap-1.5 border-t border-line/70 pt-3 text-[11px] text-subtle">
+        <div className="mt-3 flex items-center gap-1.5 border-t border-line/70 pt-3 text-caption text-subtle">
           <Icon.clock width={13} height={13} /> {t('project.cardMeta', { date: formatDate(p.updatedAt, i18n.language), count: p.memberCount })}
         </div>
       </div>
@@ -225,8 +225,8 @@ export default function Home() {
     <AppShell>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="font-heading text-2xl font-semibold">{heading}</h1>
-          <p className="mt-1 text-sm text-muted">{t('home.subtitle')}</p>
+          <h1 className="font-heading text-display">{heading}</h1>
+          <p className="mt-1 text-body-sm text-muted">{t('home.subtitle')}</p>
         </div>
         <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
           <Icon.plus width={18} height={18} /> {t('project.newProject')}

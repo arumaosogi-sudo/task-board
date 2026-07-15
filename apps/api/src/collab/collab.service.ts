@@ -10,8 +10,13 @@ import {
 } from '@hocuspocus/server'
 import * as Y from 'yjs'
 import { PrismaService } from '../prisma/prisma.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { JwtPayload } from '../auth/strategies/jwt.strategy'
 import { ROLE_RANK } from '../projects/decorators/min-role.decorator'
+
+// Don't spam a Revision notification on every 2s Hocuspocus store — collapse repeated
+// saves of the same file by the same author into at most one notification per window.
+const REVISION_NOTIFY_THROTTLE_MS = 5 * 60_000
 
 /**
  * Context returned by onAuthenticate and threaded into every later hook for a
@@ -40,11 +45,16 @@ interface CollabContext {
 export class CollabService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CollabService.name)
   private server?: Hocuspocus
+  // Per (fileId:actorId) timestamp of the last Revision notification we fanned out,
+  // used to throttle repeated autosaves into one notification per window. In-memory is
+  // fine: the collab server is a single process and over-notifying is harmless anyway.
+  private readonly notifyThrottle = new Map<string, number>()
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit(): void {
@@ -146,5 +156,55 @@ export class CollabService implements OnModuleInit, OnModuleDestroy {
       where: { id: data.documentName },
       data: { ydoc: Buffer.from(state) },
     })
+
+    // Fan out a throttled "Revision" notification to the other project members so the
+    // saved-document activity surfaces in near-real-time. Fire-and-forget: the persist
+    // above is the primary job of this hook, so we don't await (or fail on) the notify
+    // side effect — that would needlessly delay Hocuspocus's store cycle.
+    void this.notifyRevision(data.context as CollabContext | undefined, data.documentName)
+  }
+
+  /**
+   * Notify co-members (not the author) that a document was updated. Throttled per
+   * (fileId + author) so a burst of autosaves collapses to one notification per window.
+   */
+  private async notifyRevision(ctx: CollabContext | undefined, fileId: string): Promise<void> {
+    if (!ctx?.userId || !ctx.projectId) return
+
+    const throttleKey = `${fileId}:${ctx.userId}`
+    const now = Date.now()
+    if ((this.notifyThrottle.get(throttleKey) ?? 0) + REVISION_NOTIFY_THROTTLE_MS > now) return
+    // Opportunistic cleanup so the Map doesn't grow unbounded across the process lifetime:
+    // every time we set a fresh stamp, evict any entry whose window has fully elapsed.
+    for (const [key, ts] of this.notifyThrottle) {
+      if (ts + REVISION_NOTIFY_THROTTLE_MS <= now) this.notifyThrottle.delete(key)
+    }
+    this.notifyThrottle.set(throttleKey, now)
+
+    try {
+      const [members, file] = await Promise.all([
+        this.prisma.membership.findMany({
+          where: { projectId: ctx.projectId, userId: { not: ctx.userId } },
+          select: { userId: true },
+        }),
+        this.prisma.file.findUnique({ where: { id: fileId }, select: { name: true } }),
+      ])
+      if (members.length === 0) return
+
+      await this.notifications.notify(
+        members.map((m) => m.userId),
+        'Revision',
+        {
+          actorName: ctx.username,
+          projectId: ctx.projectId,
+          fileId,
+          fileName: file?.name ?? '',
+        },
+      )
+    } catch (err) {
+      // Roll back the throttle stamp so a transient failure can retry on the next save.
+      this.notifyThrottle.delete(throttleKey)
+      this.logger.error(`notify revision failed: ${(err as Error).message}`)
+    }
   }
 }

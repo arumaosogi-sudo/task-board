@@ -12,10 +12,10 @@ type Uname = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{3,30}$/
 
 function UsernameStatus({ s, t }: { s: Uname; t: TFunction }) {
-  if (s === 'checking') return <span className="flex items-center gap-1 text-[12px] text-muted"><span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> {t('auth.checking')}</span>
-  if (s === 'available') return <span className="flex items-center gap-1 text-[12px] text-success"><Icon.check width={13} height={13} /> {t('auth.usernameAvailable')}</span>
-  if (s === 'taken') return <span className="flex items-center gap-1 text-[12px] text-danger"><Icon.x width={13} height={13} /> {t('auth.usernameTaken')}</span>
-  if (s === 'invalid') return <span className="flex items-center gap-1 text-[12px] text-danger"><Icon.x width={13} height={13} /> {t('auth.usernameRule')}</span>
+  if (s === 'checking') return <span className="flex items-center gap-1 text-caption text-muted"><span className="size-3 animate-spin rounded-full border-2 border-current border-t-transparent" /> {t('auth.checking')}</span>
+  if (s === 'available') return <span className="flex items-center gap-1 text-caption text-success"><Icon.check width={13} height={13} /> {t('auth.usernameAvailable')}</span>
+  if (s === 'taken') return <span className="flex items-center gap-1 text-caption text-danger"><Icon.x width={13} height={13} /> {t('auth.usernameTaken')}</span>
+  if (s === 'invalid') return <span className="flex items-center gap-1 text-caption text-danger"><Icon.x width={13} height={13} /> {t('auth.usernameRule')}</span>
   return null
 }
 
@@ -82,7 +82,7 @@ export default function SignUp() {
   return (
     <AuthLayout>
       <Card className="p-6 sm:p-7">
-        <h1 className="text-center font-heading text-[22px] font-semibold">{t('auth.createAccount')}</h1>
+        <h1 className="text-center font-heading text-h2">{t('auth.createAccount')}</h1>
 
         {error && <div className="mt-5"><Banner tone="error">{error}</Banner></div>}
 
@@ -103,7 +103,7 @@ export default function SignUp() {
               trailing={<span className="pr-2"><UsernameStatus s={uname} t={t} /></span>} />
           </Field>
 
-          <label className="flex items-start gap-2.5 text-[13px] text-muted">
+          <label className="flex items-start gap-2.5 text-body-sm text-muted">
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)}
               className="mt-0.5 size-4 rounded border-line text-primary focus:ring-primary" />
             <span>{t('auth.agreePrefix')} <Link to="#" className="text-primary hover:underline">{t('auth.terms')}</Link> {t('auth.and')} <Link to="#" className="text-primary hover:underline">{t('auth.privacy')}</Link></span>
@@ -112,7 +112,7 @@ export default function SignUp() {
           <Button type="submit" full size="lg" loading={loading} disabled={!canSubmit}>{t('auth.createAccountButton')}</Button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-muted">
+        <p className="mt-6 text-center text-body text-muted">
           {t('auth.haveAccount')} <Link to="/" className="font-medium text-primary hover:underline">{t('auth.signIn')}</Link>
         </p>
       </Card>

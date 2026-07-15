@@ -3,10 +3,13 @@
 #   docker build -f apps/api/Dockerfile -t task-board-api .
 
 # ---------- base ----------
-FROM node:20-slim AS base
+# Pinned by digest for reproducible builds (tag node:20-slim as of 2026-04-22).
+# To refresh: check the current digest for the `20-slim` tag on Docker Hub and
+# update both the FROM line and this comment together.
+FROM node:20-slim@sha256:3d0f05455dea2c82e2f76e7e2543964c30f6b7d673fc1a83286736d44fe4c41c AS base
 WORKDIR /app
 # Prisma query engine needs OpenSSL at build and runtime.
-RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
 # ---------- build ----------
 FROM base AS build
@@ -34,10 +37,22 @@ COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
 # Compiled app + schema/migrations (for `prisma migrate deploy`).
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY apps/api/prisma ./apps/api/prisma
+COPY apps/api/docker-entrypoint.sh /app/docker-entrypoint.sh
+
+# node:20-slim already ships a non-root "node" user (uid 1000) — reuse it,
+# just make sure it owns what it needs to read/write (node_modules/.prisma
+# query-engine cache, migration state).
+RUN chmod +x /app/docker-entrypoint.sh && chown -R node:node /app
+USER node
 
 # REST API (3001) + Hocuspocus realtime WS (3002).
 EXPOSE 3001 3002
-# Apply pending migrations, then boot. `migrate deploy` is idempotent.
-# NOTE: tsc nests emitted output under dist/apps/api/src because the type-only
-# import of packages/shared widens the compilation rootDir — hence the deep path.
-CMD ["sh", "-c", "npx prisma migrate deploy --schema apps/api/prisma/schema.prisma && node apps/api/dist/apps/api/src/main.js"]
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
+
+# entrypoint runs `prisma migrate deploy` then `exec node ...`, so node
+# replaces the shell as PID 1 and receives SIGTERM directly (see
+# docker-entrypoint.sh — required for graceful shutdown via
+# app.enableShutdownHooks() in apps/api/src/main.ts).
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

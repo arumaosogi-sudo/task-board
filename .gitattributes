@@ -1,2 +1,7 @@
 *.psd filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
+
+# Force LF regardless of core.autocrlf — CRLF in a shell script breaks the
+# #!/bin/sh shebang (and the script body) once it runs inside a Linux
+# container. Matters for apps/api/docker-entrypoint.sh in particular.
+*.sh text eol=lf

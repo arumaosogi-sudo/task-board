@@ -10,6 +10,7 @@ export interface NotificationPayload {
   fileId?: string
   fileName?: string
   revisionLabel?: string | null
+  commentId?: string
 }
 
 export interface NotificationDto {
@@ -21,10 +22,16 @@ export interface NotificationDto {
 }
 
 // Maps a notification type to the UserSetting opt-in column that gates it.
-const OPT_IN_FIELD: Record<NotificationType, 'notifyInvite' | 'notifyMention' | 'notifyRevision'> = {
+const OPT_IN_FIELD: Record<
+  NotificationType,
+  'notifyInvite' | 'notifyMention' | 'notifyRevision' | 'notifyComment'
+> = {
   ProjectInvite: 'notifyInvite',
   Mention: 'notifyMention',
   Revision: 'notifyRevision',
+  // A single opt-in gates both comment kinds in v1 (see UserSetting.notifyComment).
+  Comment: 'notifyComment',
+  CommentReply: 'notifyComment',
 }
 
 @Injectable()

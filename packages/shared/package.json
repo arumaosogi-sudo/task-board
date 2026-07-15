@@ -7,7 +7,7 @@
     "typecheck": "tsc --noEmit",
     "build": "echo \"shared: no build needed\"",
     "dev": "echo \"shared: no dev server\"",
-    "lint": "echo \"lint ok\""
+    "lint": "eslint src"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

@@ -3,9 +3,14 @@ import { ConfigService } from '@nestjs/config'
 import { AuthGuard } from '@nestjs/passport'
 
 /**
- * Wraps the passport 'google' strategy. If GOOGLE_CLIENT_SECRET is not configured,
- * short-circuits with 503 instead of failing with "Unknown authentication strategy"
- * (the strategy isn't registered when unconfigured).
+ * Wraps the passport 'google' strategy. When Google OAuth isn't fully configured
+ * it short-circuits with 503 instead of letting the request reach an unregistered
+ * strategy (which would surface as a confusing 500 "Unknown authentication
+ * strategy 'google'").
+ *
+ * The configured/unconfigured check mirrors googleStrategyFactory exactly (both
+ * client id AND secret, both read through ConfigService) so the guard's verdict
+ * and the strategy's registration can never disagree.
  */
 @Injectable()
 export class GoogleGuard extends AuthGuard('google') {
@@ -14,12 +19,16 @@ export class GoogleGuard extends AuthGuard('google') {
   }
 
   canActivate(context: ExecutionContext) {
-    if (!this.config.get<string>('GOOGLE_CLIENT_SECRET')) {
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID')
+    const clientSecret = this.config.get<string>('GOOGLE_CLIENT_SECRET')
+
+    if (!clientId || !clientSecret) {
       throw new ServiceUnavailableException({
         code: 'google-oauth-unconfigured',
-        message: 'Google OAuth ยังไม่ได้ตั้งค่า (ขาด GOOGLE_CLIENT_SECRET)',
+        message: 'Google OAuth ยังไม่ได้ตั้งค่า (ต้องมี GOOGLE_CLIENT_ID และ GOOGLE_CLIENT_SECRET)',
       })
     }
+
     return super.canActivate(context)
   }
 }

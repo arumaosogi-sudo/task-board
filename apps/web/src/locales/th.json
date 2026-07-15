@@ -25,8 +25,7 @@
   "nav": {
     "allProjects": "Project ทั้งหมด",
     "myProjects": "Project ของฉัน",
-    "myUpdates": "สิ่งที่ฉันแก้",
-    "projectChanges": "ความเปลี่ยนแปลง",
+    "activity": "กิจกรรม",
     "trash": "ถังขยะ",
     "settings": "ตั้งค่า"
   },
@@ -47,6 +46,9 @@
     "forgotPassword": "ลืมรหัสผ่าน?",
     "emailNotVerified": "บัญชีนี้ยังไม่ได้ยืนยันอีเมล",
     "signInFailed": "เข้าสู่ระบบไม่สำเร็จ",
+    "googleFailed": "เข้าสู่ระบบด้วย Google ไม่สำเร็จ กรุณาลองใหม่",
+    "googleUnconfigured": "เซิร์ฟเวอร์นี้ยังไม่ได้ตั้งค่าการเข้าสู่ระบบด้วย Google",
+    "googleCancelled": "คุณยกเลิกการเข้าสู่ระบบด้วย Google",
     "verifyResent": "ส่งอีเมลยืนยันใหม่แล้ว",
     "resendVerify": "ส่งอีเมลยืนยันอีกครั้ง",
     "createAccount": "สร้างบัญชีของคุณ",
@@ -188,6 +190,24 @@
     "deleteFolderBody": "“{{name}}” และไฟล์ทั้งหมดข้างในจะถูกลบ",
     "saveFailed": "บันทึกไม่สำเร็จ"
   },
+  "tasklist": {
+    "insert": "แทรกเช็คลิสต์"
+  },
+  "mentions": {
+    "listLabel": "สมาชิกที่แนะนำ",
+    "empty": "ไม่พบสมาชิก"
+  },
+  "templates": {
+    "startFrom": "เริ่มจาก",
+    "blank": "เอกสารเปล่า",
+    "blankDesc": "เริ่มจากหน้าว่าง",
+    "progress": "รายงานความคืบหน้า",
+    "progressDesc": "สรุปงานที่ทำ กำลังทำ และอุปสรรค",
+    "meeting": "สรุปการประชุม",
+    "meetingDesc": "วาระ ประเด็นสำคัญ และสิ่งที่ต้องทำต่อ",
+    "proposal": "ข้อเสนอโครงการ",
+    "proposalDesc": "ที่มา วัตถุประสงค์ ขอบเขต และทรัพยากร"
+  },
   "projectSettings": {
     "notFound": "ไม่พบ Project",
     "notFoundDesc": "Project นี้อาจถูกลบ หรือไม่มีสิทธิ์เข้าถึง",
@@ -255,10 +275,14 @@
     "noChanges": "ไม่มีการเปลี่ยนแปลง"
   },
   "updates": {
-    "myTitle": "สิ่งที่ฉันแก้",
-    "mySubtitle": "เวอร์ชันที่คุณบันทึกไว้จากทุก project",
-    "changesTitle": "ความเปลี่ยนแปลง",
-    "changesSubtitle": "เวอร์ชันจากทุกคนใน project ที่คุณเป็นสมาชิก",
+    "activityTitle": "กิจกรรม",
+    "activitySubtitle": "ประวัติการแก้ไขเวอร์ชันจากทุก project ของคุณ",
+    "scopeAll": "ทั้งหมด",
+    "scopeMine": "เฉพาะของฉัน",
+    "activityEmptyAllTitle": "ยังไม่มีความเคลื่อนไหว",
+    "activityEmptyAllBody": "เมื่อมีคนแก้ไขเอกสารใน project ของคุณ ความเคลื่อนไหวจะปรากฏที่นี่",
+    "activityEmptyMineTitle": "คุณยังไม่มีการแก้ไข",
+    "activityEmptyMineBody": "ลองสลับไปดู “ทั้งหมด” เพื่อดูความเคลื่อนไหวของทีม หรือเริ่มแก้ไขเอกสารเพื่อสร้างประวัติของคุณ",
     "range7d": "7 วัน",
     "range30d": "30 วัน",
     "rangeAll": "ทั้งหมด",
@@ -268,11 +292,8 @@
     "scopeMember": "ผู้ร่วมงาน",
     "by": "โดย",
     "openFile": "เปิดไฟล์",
-    "loadError": "โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง",
-    "myEmptyTitle": "ยังไม่มีการแก้ไขของคุณ",
-    "myEmptyBody": "เริ่มแก้ไขเอกสารแล้วประวัติการเปลี่ยนแปลงของคุณจะมาแสดงที่นี่",
-    "changesEmptyTitle": "ยังไม่มีการเปลี่ยนแปลง",
-    "changesEmptyBody": "เมื่อมีคนแก้ไขเอกสารใน project ของคุณ การเปลี่ยนแปลงจะปรากฏที่นี่"
+    "viewAllHistory": "ดูประวัติทั้งหมดของไฟล์นี้",
+    "loadError": "โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง"
   },
   "search": {
     "placeholder": "ค้นหา project, ไฟล์ หรือเนื้อหา…",

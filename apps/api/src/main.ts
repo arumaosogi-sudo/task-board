@@ -1,9 +1,11 @@
 import 'reflect-metadata'
 import { ValidationPipe } from '@nestjs/common'
+import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
 import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
+import { validateAuthSecrets } from './config/validate-secrets'
 
 /** Parse a comma-separated origin allowlist from env, trimming blanks. */
 function parseOrigins(): string[] {
@@ -16,6 +18,9 @@ function parseOrigins(): string[] {
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+
+  // Fail fast on a missing/weak/default JWT secret before serving any traffic.
+  validateAuthSecrets(app.get(ConfigService))
 
   app.use(cookieParser())
 
@@ -46,6 +51,11 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   )
+
+  // Wire NestJS lifecycle hooks to process signals (SIGTERM/SIGINT) so that on
+  // shutdown onModuleDestroy runs — CollabService closes Hocuspocus WS gracefully
+  // and PrismaService disconnects. Requires node to be PID 1 in the container.
+  app.enableShutdownHooks()
 
   const port = parseInt(process.env.PORT || '3001', 10)
   await app.listen(port)

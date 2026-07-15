@@ -76,7 +76,9 @@ export class FilesService {
         name: dto.name,
         kind: dto.kind as FileKind,
         orientation: dto.kind === 'Document' ? (dto.orientation ?? 'portrait') : null,
-        content: dto.kind === 'Document' ? '' : null,
+        // Seed from the template body when provided; blank documents still get '' (and
+        // folders stay null). `content` is ignored for non-Document kinds by this branch.
+        content: dto.kind === 'Document' ? (dto.content ?? '') : null,
       },
     })
     return this.toDocument(file)

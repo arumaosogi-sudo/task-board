@@ -35,6 +35,18 @@ export default {
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
         thai: ['"Noto Sans Thai"', 'sans-serif'],
       },
+      // Semantic type scale (Sprint 3). Named tokens replace the scattered
+      // arbitrary `text-[Npx]` values so hierarchy is intentional, not incidental.
+      // Sizes map onto the existing arbitrary values to keep migration layout-safe.
+      fontSize: {
+        display: ['28px', { lineHeight: '1.2', fontWeight: '700' }],
+        h2: ['20px', { lineHeight: '1.3', fontWeight: '600' }],
+        h3: ['17px', { lineHeight: '1.4', fontWeight: '600' }],
+        body: ['14px', { lineHeight: '1.6' }],
+        'body-sm': ['13px', { lineHeight: '1.55' }],
+        caption: ['12px', { lineHeight: '1.4' }],
+        label: ['11px', { lineHeight: '1.3', letterSpacing: '0.02em', fontWeight: '600' }],
+      },
       borderRadius: {
         DEFAULT: '14px',
         lg: '14px',
@@ -57,8 +69,12 @@ export default {
         blink: { '0%,100%': { opacity: '1' }, '50%': { opacity: '0' } },
       },
       animation: {
-        pop: 'pop 0.16s ease-out',
-        fade: 'fade 0.2s ease-out',
+        // `both` = animation-fill-mode: both — retain the 100% (opacity:1) end state.
+        // Without it, if the animation is suppressed (e.g. prefers-reduced-motion forces
+        // duration ~0), the element can settle on the 0% keyframe (opacity:0) and render
+        // invisible — a cause of the "blank screen" when opening the drawing modal.
+        pop: 'pop 0.16s ease-out both',
+        fade: 'fade 0.2s ease-out both',
         blink: 'blink 1s step-end infinite',
       },
     },

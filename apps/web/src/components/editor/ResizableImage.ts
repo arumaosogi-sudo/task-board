@@ -8,6 +8,12 @@ import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ResizableImageView } from './ResizableImageView'
 
 export const ResizableImage = Image.extend({
+  // Google Docs-style inline reposition: let ProseMirror own the drag. With
+  // `draggable: true` on the node spec + a `data-drag-handle` element in the node
+  // view, PM moves the node by rewriting its *position* in the doc — it never
+  // touches node attributes, so this stays Yjs-safe (no mid-drag width churn).
+  draggable: true,
+
   addAttributes() {
     return {
       ...this.parent?.(),

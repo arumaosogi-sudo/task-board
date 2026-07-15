@@ -25,8 +25,7 @@
   "nav": {
     "allProjects": "All Projects",
     "myProjects": "My Projects",
-    "myUpdates": "My Edits",
-    "projectChanges": "Changes",
+    "activity": "Activity",
     "trash": "Trash",
     "settings": "Settings"
   },
@@ -47,6 +46,9 @@
     "forgotPassword": "Forgot password?",
     "emailNotVerified": "This account's email is not verified yet",
     "signInFailed": "Sign-in failed",
+    "googleFailed": "Google sign-in failed. Please try again",
+    "googleUnconfigured": "Google sign-in isn't set up on this server yet",
+    "googleCancelled": "Google sign-in was cancelled",
     "verifyResent": "Verification email sent again",
     "resendVerify": "Resend verification email",
     "createAccount": "Create your account",
@@ -188,6 +190,24 @@
     "deleteFolderBody": "“{{name}}” and all files inside will be deleted",
     "saveFailed": "Save failed"
   },
+  "tasklist": {
+    "insert": "Insert checklist"
+  },
+  "mentions": {
+    "listLabel": "Suggested members",
+    "empty": "No members found"
+  },
+  "templates": {
+    "startFrom": "Start from",
+    "blank": "Blank document",
+    "blankDesc": "Start from an empty page",
+    "progress": "Progress report",
+    "progressDesc": "What's done, in progress, and blocked",
+    "meeting": "Meeting notes",
+    "meetingDesc": "Agenda, key points, and action items",
+    "proposal": "Project proposal",
+    "proposalDesc": "Background, objectives, scope, and resources"
+  },
   "projectSettings": {
     "notFound": "Project not found",
     "notFoundDesc": "This Project may have been deleted, or you don't have access",
@@ -255,10 +275,14 @@
     "noChanges": "No changes"
   },
   "updates": {
-    "myTitle": "My Edits",
-    "mySubtitle": "Revisions you've saved across all your projects",
-    "changesTitle": "Changes",
-    "changesSubtitle": "Revisions from everyone in projects you belong to",
+    "activityTitle": "Activity",
+    "activitySubtitle": "Revision history across all your projects",
+    "scopeAll": "All",
+    "scopeMine": "Mine",
+    "activityEmptyAllTitle": "No activity yet",
+    "activityEmptyAllBody": "When people edit documents in your projects, their activity appears here.",
+    "activityEmptyMineTitle": "You have no edits yet",
+    "activityEmptyMineBody": "Switch to “All” to see your team's activity, or start editing a document to build your history.",
     "range7d": "7 days",
     "range30d": "30 days",
     "rangeAll": "All",
@@ -268,11 +292,8 @@
     "scopeMember": "Collaborator",
     "by": "By",
     "openFile": "Open file",
-    "loadError": "Couldn't load updates. Check your connection and try again.",
-    "myEmptyTitle": "No edits yet",
-    "myEmptyBody": "Start editing a document and your saved revisions will show up here.",
-    "changesEmptyTitle": "No changes yet",
-    "changesEmptyBody": "When people edit documents in your projects, their revisions appear here."
+    "viewAllHistory": "View this file's full history",
+    "loadError": "Couldn't load updates. Check your connection and try again."
   },
   "search": {
     "placeholder": "Search projects, files, or content…",

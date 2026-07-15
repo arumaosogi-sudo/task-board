@@ -1,0 +1,50 @@
+# OPTIONAL fallback overlay — only needed if you self-host with
+# `docker compose` on a VPS instead of a PaaS.
+#
+# The chosen deploy target for this project is Railway / Fly.io, which build
+# directly from apps/api/Dockerfile and apps/web/Dockerfile and manage env
+# vars / secrets through their own dashboard — this file is NOT used in that
+# path. Keep it around only as a documented fallback for self-hosted docker
+# compose deploys (see ops/RUNBOOK.md).
+#
+# Usage (self-hosted VPS fallback only):
+#   export $(grep -v '^#' .env.production | xargs)   # load real secrets, not the .example
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# Unlike docker-compose.yml (local dev), this overlay does NOT hardcode any
+# secret values — everything comes from the host/CI environment via ${VAR}
+# substitution. If a var is unset, `docker compose config` will warn.
+
+services:
+  api:
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      DIRECT_URL: ${DIRECT_URL}
+      WEB_URL: ${WEB_URL}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_ACCESS_EXPIRES: ${JWT_ACCESS_EXPIRES:-15m}
+      JWT_REFRESH_EXPIRES: ${JWT_REFRESH_EXPIRES:-30d}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      EMAIL_FROM: ${EMAIL_FROM}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+    # Port mappings are inherited from docker-compose.yml (3001, 3002, 8080).
+    # If you need different host ports (e.g. put a reverse proxy in front and
+    # bind :80/:443 there instead), edit docker-compose.yml directly or add
+    # your own `ports:` override here — kept out by default to avoid relying
+    # on the newer `!override`/`!reset` compose merge tags, which not every
+    # docker compose version supports yet.
+
+  web:
+    build:
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_COLLAB_URL: ${VITE_COLLAB_URL}

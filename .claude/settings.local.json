@@ -66,7 +66,9 @@
       "Bash(echo \"EXIT:$?\")",
       "PowerShell($f1 = \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\components\\\\ProjectCard.tsx\"; $f2 = \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\data\\\\mock.ts\"; foreach \\($f in @\\($f1,$f2\\)\\) { if \\(Test-Path $f\\) { Remove-Item $f -Force; \"removed: $f\" } else { \"already gone: $f\" } }; \"data dir:\"; Get-ChildItem \"C:\\\\app-3-รอดำเนินการ\\\\apps\\\\web\\\\src\\\\data\" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name)",
       "PowerShell(Set-Location *)",
-      "PowerShell(Get-ChildItem \"C:\\\\app-3-รอดำเนินการ\\\\node_modules\\\\@tiptap\\\\\" -Directory | Where-Object { $_.Name -match \"table|starter\" } | Select-Object Name)"
+      "PowerShell(Get-ChildItem \"C:\\\\app-3-รอดำเนินการ\\\\node_modules\\\\@tiptap\\\\\" -Directory | Where-Object { $_.Name -match \"table|starter\" } | Select-Object Name)",
+      "Bash(git *)",
+      "Bash(echo \"---EXIT:$?---\")"
     ]
   }
 }

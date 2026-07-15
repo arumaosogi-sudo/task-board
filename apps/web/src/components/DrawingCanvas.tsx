@@ -6,6 +6,7 @@
 // test). Undo/redo/eraser all operate on a full-snapshot history so any edit is reversible
 // without tracking per-op deltas — cheap here because a drawing is a bounded set of paths.
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Button, Modal } from './ui'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
@@ -68,7 +69,10 @@ export function DrawingCanvas({
   function resetAll() { setHistory([[]]); setPtr(0); setCurrent(null); drawing.current = false }
 
   function pointFromEvent(e: React.PointerEvent): { x: number; y: number } {
-    const rect = svgRef.current!.getBoundingClientRect()
+    // Guard against a pointer event firing before the SVG mounts (edge case on touch
+    // devices) — a non-null assertion here would crash unhandled. Origin is a safe no-op.
+    const rect = svgRef.current?.getBoundingClientRect()
+    if (!rect) return { x: 0, y: 0 }
     // Map screen → viewBox coordinates (the SVG scales responsively).
     return {
       x: ((e.clientX - rect.left) / rect.width) * W,
@@ -153,7 +157,13 @@ export function DrawingCanvas({
   const canUndo = ptr > 0
   const canRedo = ptr < history.length - 1
 
-  return (
+  // Render the modal at document.body via a portal, escaping the CollabEditor / TipTap
+  // DOM tree entirely. ProseMirror manages its own editor DOM imperatively; mounting the
+  // Modal inside that subtree let React and ProseMirror hold stale sibling pointers,
+  // triggering an "insertBefore ... not a child of this node" crash on open. The portal
+  // moves the Modal out of that reconciliation path — the standard fix (Google Docs /
+  // Notion / Figma use the same pattern for editor overlays).
+  return createPortal(
     <Modal
       open={open}
       onClose={() => { resetAll(); onClose() }}
@@ -243,6 +253,7 @@ export function DrawingCanvas({
         </svg>
         <p className="text-[12px] text-muted">ปากกา · ปากกาเน้นข้อความ · ยางลบ — รองรับ stylus (ปรับความหนาตามแรงกด)</p>
       </div>
-    </Modal>
+    </Modal>,
+    document.body,
   )
 }

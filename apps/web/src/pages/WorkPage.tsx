@@ -1,6 +1,6 @@
 // /projects/:id/work — Phase 3 (complete): file tree + rich document editor
 // (text/format, image, freehand drawing w/ stylus, Box) + undo/redo + autosave + PDF export.
-import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
@@ -15,9 +15,12 @@ import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
 import { RevisionsApi } from '../lib/revisions'
 import {
+  FilesApi,
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
-  type FileKind, type FileNode,
+  type FileNode,
 } from '../lib/files'
+import { REPORT_TEMPLATES, templateContent, type TemplateId } from '../lib/templates'
+import type { Language } from '../i18n'
 
 // Lazy-loaded: TipTap + Yjs + Hocuspocus is a heavy bundle (~800KB). Split it out
 // so the file tree / landing shell paints without waiting for the editor chunk.
@@ -26,6 +29,38 @@ const CollabEditor = lazy(() =>
 )
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+
+// Isolates editor crashes (a thrown render in CollabEditor / DrawingCanvas / any lazy
+// chunk) so a failure paints an inline recoverable panel instead of unmounting the whole
+// WorkPage and leaving a blank/black screen. The "try again" button clears the error and
+// re-attempts the current doc.
+class EditorErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null }
+  static getDerivedStateFromError(error: Error) { return { error } }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error('[EditorErrorBoundary]', error, info)
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center p-12 text-center">
+          <p className="text-lg font-semibold text-ink">เกิดข้อผิดพลาดใน Editor</p>
+          <p className="mt-1 text-sm text-muted">{this.state.error.message}</p>
+          <button
+            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-fg"
+            onClick={() => this.setState({ error: null })}
+          >
+            ลองใหม่
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // Auto-snapshot: create a silent revision after the user pauses editing this long.
 const AUTO_SNAPSHOT_MS = 5 * 60 * 1000 // 5 minutes
@@ -77,16 +112,60 @@ function TreeItem({
   )
 }
 
-export default function WorkPage() {
+// Selectable template cards for the "New file" modal. A real radiogroup (roving focus +
+// arrow keys + aria-checked) — not decorative feature cards — per UI_GUIDELINES.
+function TemplatePicker({ value, onChange }: { value: TemplateId; onChange: (v: TemplateId) => void }) {
   const { t } = useTranslation()
+  const onKeyDown = (e: React.KeyboardEvent, idx: number) => {
+    const keys = ['ArrowDown', 'ArrowRight', 'ArrowUp', 'ArrowLeft']
+    if (!keys.includes(e.key)) return
+    e.preventDefault()
+    const forward = e.key === 'ArrowDown' || e.key === 'ArrowRight'
+    const next = (idx + (forward ? 1 : REPORT_TEMPLATES.length - 1)) % REPORT_TEMPLATES.length
+    onChange(REPORT_TEMPLATES[next].id)
+  }
+  return (
+    <div role="radiogroup" aria-label={t('templates.startFrom')} className="grid grid-cols-2 gap-2">
+      {REPORT_TEMPLATES.map((tpl, idx) => {
+        const active = tpl.id === value
+        return (
+          <button
+            key={tpl.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
+            onClick={() => onChange(tpl.id)}
+            onKeyDown={(e) => onKeyDown(e, idx)}
+            className={cn(
+              'flex flex-col gap-0.5 rounded-xl border p-3 text-left transition-colors',
+              active
+                ? 'border-primary bg-primary-soft/60 shadow-soft'
+                : 'border-line bg-card hover:border-primary/40',
+            )}
+          >
+            <span className={cn('text-body-sm font-semibold', active ? 'text-primary' : 'text-ink')}>
+              {t(tpl.labelKey)}
+            </span>
+            <span className="text-caption leading-snug text-muted">{t(tpl.descKey)}</span>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+export default function WorkPage() {
+  const { t, i18n } = useTranslation()
   const { id = '' } = useParams()
   const { user } = useAuth()
   const { data: project } = useProject(id)
   const { data: tree, isLoading: treeLoading } = useFileTree(id)
   const create = useCreateFile(id)
   const del = useDeleteFile(id)
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const fileFromUrl = searchParams.get('file')
+  const historyFromUrl = searchParams.get('history') === '1'
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const { data: doc } = useFile(id, selectedId)
@@ -96,8 +175,8 @@ export default function WorkPage() {
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
-  const [newKind, setNewKind] = useState<FileKind>('Document')
   const [newOrientation, setNewOrientation] = useState<'portrait' | 'landscape'>('portrait')
+  const [newTemplate, setNewTemplate] = useState<TemplateId>('blank')
   const [toDelete, setToDelete] = useState<FileNode | null>(null)
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
@@ -106,6 +185,13 @@ export default function WorkPage() {
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const loadedDocId = useRef<string | null>(null)
+
+  // Roster for @mention autocomplete — derived from the already-cached project detail
+  // (no extra request). Shape adapted to what CollabEditor's suggestion needs.
+  const mentionMembers = useMemo(
+    () => (project?.members ?? []).map((m) => ({ id: m.userId, username: m.username, role: m.role })),
+    [project?.members],
+  )
 
   // Auto-snapshot bookkeeping. `lastSnapshotContent` tracks the HTML of the most recent
   // snapshot (seeded from the loaded doc) so we never persist a duplicate; the timer is
@@ -118,6 +204,9 @@ export default function WorkPage() {
   const canEditRef = useRef(false)
   contentRef.current = content
   canEditRef.current = !!canEdit
+  // Tracks the HTML we last persisted to File.content so the file-switch/unmount flush
+  // can skip a redundant PUT when nothing changed since the last autosave.
+  const savedContentRef = useRef('')
 
   // Fire-and-forget snapshot: silent, non-blocking, and de-duplicated. Skips empty bodies,
   // viewers, and content identical to the last snapshot to keep the revision feed clean.
@@ -159,6 +248,8 @@ export default function WorkPage() {
       // Baseline the auto-snapshot against the just-loaded content so we never take a
       // redundant snapshot of an unchanged document.
       lastSnapshotContent.current = doc.content
+      // Baseline the autosave flush against the loaded content — nothing to flush yet.
+      savedContentRef.current = doc.content
     }
     setPresence([]); setConnStatus('connecting')
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -169,8 +260,8 @@ export default function WorkPage() {
     if (content === doc.content) return
     setStatus('saving')
     const t = setTimeout(async () => {
-      try { await save.mutateAsync(content); setStatus('saved') }
-      catch { setStatus('error') }
+      try { await save.mutateAsync(content); savedContentRef.current = content; setStatus('saved') }
+      catch (err) { console.error('[autosave] failed:', err); setStatus('error') }
     }, 800)
     return () => clearTimeout(t)
   }, [content]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -191,13 +282,24 @@ export default function WorkPage() {
 
   // Flush a snapshot immediately when switching files / unmounting, so a pending debounce
   // isn't lost. Reads live content from the ref; takeSnapshot de-dupes against the last one.
+  // Also flush the pending File.content autosave so a fast file-switch / tab-close before
+  // the 800ms debounce fires doesn't drop the tail edit. We PUT against the OUTGOING file's
+  // id (`fid`) via FilesApi directly — the `save` hook is bound to the new selectedId by the
+  // time cleanup runs, so using it would save to the wrong file.
   useEffect(() => {
     if (!doc) return
     const pid = id
     const fid = doc.id
     return () => {
       clearTimeout(autoSnapshotTimer.current)
-      takeSnapshot(pid, fid, contentRef.current)
+      const latest = contentRef.current
+      takeSnapshot(pid, fid, latest)
+      if (canEditRef.current && latest.trim() !== '' && latest !== savedContentRef.current) {
+        savedContentRef.current = latest
+        FilesApi.saveContent(pid, fid, latest).catch((err) =>
+          console.error('[autosave] flush on switch/unmount failed:', err),
+        )
+      }
     }
   }, [doc?.id, id, takeSnapshot]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -212,6 +314,23 @@ export default function WorkPage() {
     if (found) { appliedFileLink.current = fileFromUrl; setSelectedId(found.id) }
   }, [fileFromUrl, tree])
 
+  // Deep-link support (?history=1): auto-open the version-history modal for the linked
+  // file once it's actually loaded (the Activity drawer links here via "view all history").
+  // Applied once, then the `history` param is stripped so closing the modal or a later
+  // navigation doesn't reopen it. Waits for `doc` so HistoryModal (which only mounts with a
+  // loaded doc) targets the right file.
+  const appliedHistoryLink = useRef(false)
+  useEffect(() => {
+    if (!historyFromUrl || appliedHistoryLink.current) return
+    if (!doc || !selectedId) return
+    if (fileFromUrl && doc.id !== fileFromUrl) return // wait until the linked file loads
+    appliedHistoryLink.current = true
+    setHistoryOpen(true)
+    const next = new URLSearchParams(searchParams)
+    next.delete('history')
+    setSearchParams(next, { replace: true })
+  }, [historyFromUrl, doc, selectedId, fileFromUrl, searchParams, setSearchParams])
+
   // Dependency-free PDF export: open the document in a print window → "Save as PDF".
   function exportPdf() {
     if (!doc) return
@@ -224,8 +343,13 @@ export default function WorkPage() {
       `<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 28px;color:#1d2333;line-height:1.65}` +
       `h1{font-size:24px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px}h2{font-size:19px;margin:20px 0 8px}` +
       `ul,ol{padding-left:24px}a{color:#4f46e5}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
-      `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}</style></head><body>` +
-      `<h1>${safeName}</h1>${body}` +
+      `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}` +
+      // Task/checklist blocks — flatten the list bullets and lay the checkbox beside its text.
+      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
+      `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
+      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
+      `ul[data-type="taskList"] li>div>p{margin:0}</style></head><body>` +
+      `${body}` +
       `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
     )
     w.document.close()
@@ -234,14 +358,19 @@ export default function WorkPage() {
   async function submitCreate() {
     if (!newName.trim()) return
     try {
+      // Resolve the template body against the CURRENT UI language (not modal-open time, per
+      // SRS edge case). Blank → omit `content` entirely so the backend keeps its '' default
+      // path byte-for-byte (no regression for the existing blank-document flow).
+      const seed = newTemplate === 'blank' ? undefined : templateContent(newTemplate, i18n.language as Language)
+      // Folder creation is disabled — the Work Page only creates Documents now.
       const created = await create.mutateAsync({
         name: newName.trim(),
-        kind: newKind,
+        kind: 'Document',
         parentId: null,
-        // Orientation only applies to documents; folders carry no page geometry.
-        ...(newKind === 'Document' && { orientation: newOrientation }),
+        orientation: newOrientation,
+        ...(seed ? { content: seed } : {}),
       })
-      setCreateOpen(false); setNewName(''); setNewOrientation('portrait')
+      setCreateOpen(false); setNewName(''); setNewOrientation('portrait'); setNewTemplate('blank')
       if (created.kind === 'Document') setSelectedId(created.id)
     } catch { /* surfaced below via banner-less inline; keep simple */ }
   }
@@ -254,7 +383,7 @@ export default function WorkPage() {
     <div className="flex h-screen flex-col bg-paper">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
         <Link to="/home" className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('work.home')}>
-          <Icon.logout width={18} height={18} className="rotate-180" />
+          <Icon.arrowLeft width={18} height={18} />
         </Link>
         <h1 className="truncate font-heading text-[15px] font-semibold">{project?.name ?? t('work.workPage')}</h1>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">{project?.myRole}</span>
@@ -269,9 +398,9 @@ export default function WorkPage() {
         {/* File tree */}
         <aside className="flex w-64 shrink-0 flex-col border-r border-line">
           <div className="flex items-center justify-between px-3 py-2.5">
-            <span className="text-[12px] font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
+            <span className="text-caption font-semibold uppercase tracking-wide text-subtle">{t('work.files')}</span>
             {canEdit && (
-              <button onClick={() => { setCreateOpen(true); setNewKind('Document'); setNewOrientation('portrait') }}
+              <button onClick={() => { setCreateOpen(true); setNewOrientation('portrait'); setNewTemplate('blank') }}
                 className="grid size-7 place-items-center rounded-lg text-primary hover:bg-primary-soft" aria-label={t('work.createFile')}>
                 <Icon.plus width={16} height={16} />
               </button>
@@ -279,14 +408,14 @@ export default function WorkPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-3">
             {treeLoading ? (
-              <p className="px-2 py-4 text-[13px] text-muted">{t('common.loading')}</p>
+              <p className="px-2 py-4 text-body-sm text-muted">{t('common.loading')}</p>
             ) : tree && tree.length > 0 ? (
               tree.map((n) => (
                 <TreeItem key={n.id} node={n} depth={0} selectedId={selectedId}
                   onSelect={(node) => setSelectedId(node.id)} onDelete={setToDelete} canEdit={!!canEdit} />
               ))
             ) : (
-              <p className="px-2 py-4 text-[13px] text-muted">{t('work.noFiles')}{canEdit ? t('work.noFilesHint') : ''}</p>
+              <p className="px-2 py-4 text-body-sm text-muted">{t('work.noFiles')}{canEdit ? t('work.noFilesHint') : ''}</p>
             )}
           </div>
         </aside>
@@ -304,9 +433,9 @@ export default function WorkPage() {
             <>
               <div className="flex h-11 shrink-0 items-center gap-3 border-b border-line px-4">
                 <span className="truncate text-sm font-medium">{doc.name}</span>
-                <span className={cn('text-[12px]', status === 'error' ? 'text-danger' : 'text-subtle')}>{statusText[status]}</span>
+                <span className={cn('text-caption', status === 'error' ? 'text-danger' : 'text-subtle')}>{statusText[status]}</span>
                 {connStatus !== 'connected' && (
-                  <span className="flex items-center gap-1 text-[12px] text-warn" title={t('work.connStatus')}>
+                  <span className="flex items-center gap-1 text-caption text-warn" title={t('work.connStatus')}>
                     <span className="size-1.5 rounded-full bg-warn" />
                     {connStatus === 'connecting' ? t('work.connecting') : t('work.offline')}
                   </span>
@@ -343,25 +472,30 @@ export default function WorkPage() {
               <div className="min-h-0 flex-1 overflow-auto bg-ink/[0.02] p-6">
                 {/* SPEC 1 — width-fit wrapper so the A4 page surface centers without a Card frame. */}
                 <div className="mx-auto w-fit">
-                  <Suspense fallback={
-                    <div className="grid place-items-center py-16">
-                      <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                    </div>
-                  }>
-                    <CollabEditor
-                      key={doc.id}
-                      fileId={doc.id}
-                      token={getToken}
-                      initialContent={doc.content}
-                      orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
-                      readOnly={!canEdit}
-                      onChange={setContent}
-                      user={collabUser}
-                      onPresenceChange={handlePresence}
-                      onStatusChange={handleStatus}
-                      onReady={handleReady}
-                    />
-                  </Suspense>
+                  {/* `key={doc.id}` remounts the boundary on file switch so a crash on one
+                      doc doesn't stick when the user navigates to another. */}
+                  <EditorErrorBoundary key={doc.id}>
+                    <Suspense fallback={
+                      <div className="grid place-items-center py-16">
+                        <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      </div>
+                    }>
+                      <CollabEditor
+                        key={doc.id}
+                        fileId={doc.id}
+                        token={getToken}
+                        initialContent={doc.content}
+                        orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
+                        readOnly={!canEdit}
+                        onChange={setContent}
+                        user={collabUser}
+                        onPresenceChange={handlePresence}
+                        onStatusChange={handleStatus}
+                        onReady={handleReady}
+                        members={mentionMembers}
+                      />
+                    </Suspense>
+                  </EditorErrorBoundary>
                 </div>
               </div>
             </>
@@ -388,6 +522,7 @@ export default function WorkPage() {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         title={t('work.createFileTitle')}
+        width="max-w-lg"
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreateOpen(false)}>{t('common.cancel')}</Button>
@@ -395,21 +530,21 @@ export default function WorkPage() {
           </>
         }
       >
+        {/* Folder creation removed (Google Docs-style flat file list). Only Documents
+            can be created now; existing folders still render/delete via the tree. */}
         <div className="space-y-4">
-          <Segmented value={newKind} onChange={setNewKind}
-            options={[{ value: 'Document', label: t('work.document') }, { value: 'Folder', label: t('work.folder') }]} />
           <Field label={t('common.name')} htmlFor="fn">
             <Input id="fn" value={newName} onChange={(e) => setNewName(e.target.value)}
-              placeholder={newKind === 'Folder' ? t('work.folderNamePlaceholder') : t('work.documentNamePlaceholder')} autoFocus
+              placeholder={t('work.documentNamePlaceholder')} autoFocus
               onKeyDown={(e) => { if (e.key === 'Enter') submitCreate() }} />
           </Field>
-          {/* Page orientation is document-only; folders have no page geometry. */}
-          {newKind === 'Document' && (
-            <Field label={t('work.orientation')}>
-              <Segmented value={newOrientation} onChange={setNewOrientation}
-                options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
-            </Field>
-          )}
+          <Field label={t('templates.startFrom')}>
+            <TemplatePicker value={newTemplate} onChange={setNewTemplate} />
+          </Field>
+          <Field label={t('work.orientation')}>
+            <Segmented value={newOrientation} onChange={setNewOrientation}
+              options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
+          </Field>
         </div>
       </Modal>
 

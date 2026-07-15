@@ -1,0 +1,44 @@
+# Isolated TEST-ONLY stack — db + mailpit for integration/e2e test runs.
+#
+# Why a separate file instead of reusing docker-compose.yml's `db`/`mailpit`:
+#   - Integration specs TRUNCATE every table between tests. Pointing them at the
+#     same Postgres your `npm run dev` / `docker compose up` stack uses would wipe
+#     real local data the moment someone runs `npm run test:int:local`.
+#   - Different ports (5433 / 2025 / 8026 instead of 5432 / 1025 / 8025) mean this
+#     stack can run ALONGSIDE a normal dev stack without colliding.
+#   - `name:` below gives it its own Compose project, so `docker compose down` on
+#     the dev stack never touches these containers (and vice versa).
+#   - tmpfs data dir: every `up` starts from an empty database on purpose — tests
+#     should never depend on state left over from a previous run.
+#
+# Not meant to be started by hand for daily dev — see the one-command scripts:
+#   npm run test:int:local   (ops/scripts/test-int-local.mjs)
+#   npm run test:e2e:local   (ops/scripts/test-e2e-local.mjs)
+# Manual use (debugging): docker compose -f docker-compose.test.yml up -d --wait
+name: taskboard-test
+
+services:
+  test-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taskboard_test
+      POSTGRES_PASSWORD: taskboard_test
+      POSTGRES_DB: taskboard_test
+    ports:
+      - "5433:5432" # NOT 5432 — that's the dev stack's `db` service.
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taskboard_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  test-mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "2025:1025" # SMTP — NOT 1025 (dev stack's `mailpit`).
+      - "8026:8025" # HTTP API/UI — NOT 8025 (dev stack's `mailpit`).
+    # No exec-form healthcheck here on purpose: the upstream image ships no
+    # shell/wget (same reason docker-compose.yml's `mailpit` has none either).
+    # The e2e orchestration script polls the HTTP API from the host instead.
