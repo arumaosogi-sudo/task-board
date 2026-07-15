@@ -41,6 +41,28 @@ const FilesApi = {
   saveContent: (pid: string, fid: string, content: string) =>
     api.put<{ updatedAt: string }>(`/projects/${pid}/files/${fid}/content`, { content }).then((r) => r.data),
   remove: (pid: string, fid: string) => api.delete(`/projects/${pid}/files/${fid}`).then((r) => r.data),
+  /**
+   * Upload an editor image to Supabase Storage and get back the URL to embed as
+   * `<img src>` (ADR 0004 — keeps base64 out of the Yjs CRDT). `onProgress` reports
+   * 0..1 for the optimistic progress card; `signal` lets an unmounting editor abort.
+   */
+  uploadAsset: (
+    pid: string,
+    fid: string,
+    file: Blob,
+    opts: { filename?: string; onProgress?: (fraction: number) => void; signal?: AbortSignal } = {},
+  ) => {
+    const form = new FormData()
+    form.append('file', file, opts.filename ?? 'image')
+    return api
+      .post<{ url: string }>(`/projects/${pid}/files/${fid}/assets`, form, {
+        signal: opts.signal,
+        onUploadProgress: (e) => {
+          if (opts.onProgress && e.total) opts.onProgress(e.loaded / e.total)
+        },
+      })
+      .then((r) => r.data)
+  },
 }
 
 export function useFileTree(projectId: string) {

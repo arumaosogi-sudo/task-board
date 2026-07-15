@@ -193,6 +193,21 @@
   "tasklist": {
     "insert": "แทรกเช็คลิสต์"
   },
+  "editor": {
+    "modesLabel": "โหมดแก้ไข",
+    "write": "เขียน",
+    "draw": "วาด",
+    "insert": "แทรก",
+    "openDraw": "เปิดพื้นที่วาด",
+    "stylusHint": "(รองรับ stylus)",
+    "insertImage": "แทรกรูปภาพ",
+    "insertBox": "แทรกกล่องข้อความ",
+    "deleteBox": "ลบกล่องข้อความ",
+    "uploading": "กำลังอัปโหลดรูปภาพ…",
+    "uploadFailed": "อัปโหลดไม่สำเร็จ",
+    "retry": "ลองใหม่",
+    "dismiss": "ลบ"
+  },
   "mentions": {
     "listLabel": "สมาชิกที่แนะนำ",
     "empty": "ไม่พบสมาชิก"

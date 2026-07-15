@@ -124,6 +124,7 @@ model Project {
   invitations Invitation[]
   pins        ProjectPin[]
   files       File[]
+  assets      FileAsset[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -194,14 +195,37 @@ model File {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  parent    File?      @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children  File[]     @relation("FileTree")
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    File?       @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  File[]      @relation("FileTree")
   revisions Revision[]
   comments  Comment[]
+  assets    FileAsset[]
 
   @@index([projectId])
   @@index([parentId])
+}
+
+// ─────────────────────── Sprint 4: Editor image assets (ADR 0004) ────────────
+// Uploaded images/drawings live in Supabase Storage, not inlined as base64 into the
+// Yjs CRDT. The document node stores only the short `url`; this row is the DB record
+// (ownership, size, mime) and enables cascade-cleanup when a file/project is deleted.
+model FileAsset {
+  id        String   @id @default(cuid())
+  fileId    String
+  projectId String // denormalized so the authz query (project membership) stays one hop
+  path      String // storage object key inside the bucket
+  url       String // URL the frontend renders as <img src>
+  mimeType  String
+  sizeBytes Int
+  createdBy String
+  createdAt DateTime @default(now())
+
+  file    File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([fileId])
+  @@index([projectId])
 }
 
 // ─────────────────────────── Phase 4: Collaboration / Revisions ──────────────

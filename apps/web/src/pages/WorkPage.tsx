@@ -483,6 +483,7 @@ export default function WorkPage() {
                       <CollabEditor
                         key={doc.id}
                         fileId={doc.id}
+                        projectId={doc.projectId}
                         token={getToken}
                         initialContent={doc.content}
                         orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
