@@ -14,7 +14,7 @@ import { useAuth } from '../lib/auth'
 import { getFreshAccessToken } from '../lib/api'
 import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
-import { RevisionsApi } from '../lib/revisions'
+import { RevisionsApi, normalizeCommitLabel, useCreateRevision } from '../lib/revisions'
 import {
   FilesApi,
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
@@ -193,6 +193,13 @@ export default function WorkPage() {
   const [editorApi, setEditorApi] = useState<Editor | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
+  // Manual "Commit" (git-style versioned save with an optional message) — separate from the
+  // silent 5-min auto-snapshot, which stays as-is as a safety net.
+  const [commitOpen, setCommitOpen] = useState(false)
+  const [commitMsg, setCommitMsg] = useState('')
+  const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>()
+  const commitRevision = useCreateRevision(id, selectedId ?? '')
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const isOwner = project?.myRole === 'Owner'
@@ -281,6 +288,35 @@ export default function WorkPage() {
   const restoreRevision = useCallback((html: string) => {
     editorApi?.chain().focus().setContent(html).run()
   }, [editorApi])
+
+  // Transient confirmation/error toast (auto-dismisses). Reuses the project's token palette
+  // (add/del surfaces) rather than a new notification system.
+  const showToast = useCallback((tone: 'success' | 'error', msg: string) => {
+    setToast({ tone, msg })
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 3200)
+  }, [])
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
+
+  // Manual commit: persist a revision IMMEDIATELY (bypasses the 5-min auto-snapshot debounce)
+  // using the editor's current HTML + the optional message as the revision label. Distinct
+  // from takeSnapshot so the auto-snapshot path is untouched. Editor+ only (mirrors autosave).
+  async function doCommit() {
+    if (!doc || !canEdit || commitRevision.isPending) return
+    const html = editorApi?.getHTML() ?? content
+    const label = normalizeCommitLabel(commitMsg) // trim + cap at DTO limit, empty → undefined
+    try {
+      await commitRevision.mutateAsync({ content: html, label })
+      // Keep the auto-snapshot baseline in sync so it doesn't immediately re-save identical
+      // content moments later.
+      lastSnapshotContent.current = html
+      setCommitOpen(false)
+      setCommitMsg('')
+      showToast('success', t('commit.done'))
+    } catch {
+      showToast('error', t('commit.failed'))
+    }
+  }
 
   // Sync local content when a different document loads; reset per-doc collab state.
   useEffect(() => {
@@ -516,6 +552,13 @@ export default function WorkPage() {
                     </span>
                   )}
                 </button>
+                {canEdit && (
+                  <button onClick={() => setCommitOpen(true)} title={t('commit.button')}
+                    className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
+                    aria-label={t('commit.button')}>
+                    <Icon.commit width={17} height={17} />
+                  </button>
+                )}
                 <button onClick={() => setHistoryOpen(true)} title={t('work.versionHistory')}
                   className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
                   aria-label={t('work.versionHistory')}>
@@ -598,6 +641,48 @@ export default function WorkPage() {
           canEdit={!!canEdit}
           onRestore={restoreRevision}
         />
+      )}
+
+      {/* Commit — manual versioned save with an optional message (git-style). */}
+      <Modal
+        open={commitOpen}
+        onClose={() => setCommitOpen(false)}
+        title={t('commit.title')}
+        width="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCommitOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={doCommit} loading={commitRevision.isPending}>
+              <Icon.commit width={16} height={16} /> {t('commit.action')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('commit.messageLabel')} htmlFor="commit-msg" optional hint={t('commit.hint')}>
+          <Input
+            id="commit-msg"
+            value={commitMsg}
+            maxLength={120}
+            onChange={(e) => setCommitMsg(e.target.value)}
+            placeholder={t('commit.placeholder')}
+            autoFocus
+            aria-label={t('commit.messageLabel')}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doCommit() } }}
+          />
+        </Field>
+      </Modal>
+
+      {/* Toast — transient commit confirmation / error. */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4" role="status" aria-live="polite">
+          <div className={cn(
+            'pointer-events-auto flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-body-sm shadow-pop animate-pop',
+            toast.tone === 'success' ? 'border-success/30 bg-add-bg text-add-fg' : 'border-danger/30 bg-del-bg text-del-fg',
+          )}>
+            {toast.tone === 'success' ? <Icon.check width={16} height={16} /> : <Icon.warning width={16} height={16} />}
+            <span>{toast.msg}</span>
+          </div>
+        </div>
       )}
 
       {/* Create file/folder */}
