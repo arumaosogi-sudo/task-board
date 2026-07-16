@@ -249,7 +249,19 @@ export function CollabEditor({
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // Created exactly once per mount (per file, thanks to the parent's `key`).
-  const [{ ydoc, provider }] = useState(() => {
+  //
+  // NOT a useState lazy initializer: React 18 StrictMode deliberately invokes a
+  // useState initializer function TWICE in dev to catch impurities (per the React
+  // docs — "the initializer should not have side effects"), so the previous
+  // `useState(() => new HocuspocusProvider(...))` opened TWO live WebSocket
+  // connections racing for the same Yjs document room every mount, with the
+  // discarded one still calling its `onSynced` handler (the exact
+  // "state update on a component that hasn't mounted yet" warning this produced).
+  // A ref guarded in the render body persists across that double-invoke (same
+  // fiber, same ref object), so the check-then-create below runs the real
+  // side effect exactly once.
+  const collabRef = useRef<{ ydoc: Y.Doc; provider: HocuspocusProvider } | null>(null)
+  if (!collabRef.current) {
     const ydoc = new Y.Doc()
     const provider = new HocuspocusProvider({
       url: COLLAB_URL,
@@ -258,16 +270,22 @@ export function CollabEditor({
       token,
       onSynced: () => setSynced(true),
     })
-    return { ydoc, provider }
-  })
+    collabRef.current = { ydoc, provider }
+  }
+  const { ydoc, provider } = collabRef.current
 
   // Dedicated UndoManager for the inline drawing layer (ADR 0005 D4). Scoped to the
   // `drawings` Y.Array and tracking only local ink edits (DRAW_ORIGIN), so undo/redo in
   // draw mode reverts *my* last stroke and never a peer's — separate from the text
-  // (y-prosemirror) undo stack.
-  const [drawUndo] = useState(() =>
-    new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) }),
-  )
+  // (y-prosemirror) undo stack. Same StrictMode double-invoke hazard as the provider
+  // above (a useState lazy initializer runs twice in dev) — ref-guarded for the same
+  // reason: constructing this attaches live listeners to `ydoc`, so a discarded second
+  // instance would double-track every drawing edit against the (correctly) surviving one.
+  const drawUndoRef = useRef<Y.UndoManager | null>(null)
+  if (!drawUndoRef.current) {
+    drawUndoRef.current = new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) })
+  }
+  const drawUndo = drawUndoRef.current
 
   // Tear down the socket + doc on unmount so switching files doesn't leak connections.
   useEffect(() => () => {
