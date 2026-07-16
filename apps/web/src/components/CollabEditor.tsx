@@ -40,6 +40,8 @@ import { FilesApi } from '../lib/files'
 import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
+import { CommentHighlight } from './editor/CommentHighlight'
+import { applyCommentMark, rangeToAnchor } from './editor/commentAnchor'
 import { migrateLegacyDrawings } from './editor/drawing'
 import { DrawingOverlay } from './editor/DrawingOverlay'
 import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
@@ -115,6 +117,20 @@ export interface CollabEditorProps {
   /** Serialized <svg> of the inline drawing layer — emitted on stroke change so the parent
    *  can inject it into the PDF export (ADR 0005 D5; drawings live outside getHTML). */
   onDrawingsSvgChange?: (svg: string) => void
+  /** Editor+ may attach comments (backend @MinRole(Editor) on POST) — gates the comment
+   *  affordance in the selection BubbleMenu. */
+  canComment?: boolean
+  /** Persist a new comment. Resolves with the created id so the highlight mark can be applied
+   *  to the exact source range. Returns null if creation failed (no mark is applied). */
+  onCreateComment?: (input: {
+    anchorFrom: unknown
+    anchorTo: unknown
+    anchorText: string
+    body: string
+  }) => Promise<{ id: string } | null>
+  /** A comment highlight was clicked in the document — ids of every thread covering that
+   *  point (overlaps included), topmost-first. Lets the shell open + focus the thread. */
+  onCommentActivate?: (commentIds: string[]) => void
 }
 
 /** Draw-mode tools surfaced in the toolbar (SPEC งานที่ 2). */
@@ -191,9 +207,14 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
 
 export function CollabEditor({
   fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
+  canComment, onCreateComment, onCommentActivate,
 }: CollabEditorProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
+  // Comment click-activation reads through a ref: editorProps is built once at mount, so the
+  // handler must not close over a stale callback.
+  const onCommentActivateRef = useRef(onCommentActivate)
+  onCommentActivateRef.current = onCommentActivate
   // Live roster for @mention — the suggestion reads through this ref so a member-list
   // refetch never forces the editor (and its Yjs binding) to remount.
   const membersRef = useRef<MentionMember[]>(members ?? [])
@@ -211,6 +232,12 @@ export function CollabEditor({
   const [drawSize, setDrawSize] = useState(DRAW_SIZES[2])
   // Toolbar mode (SPEC B) — local UI state, never synced to peers. Always starts on "write".
   const [mode, setMode] = useState<EditorMode>('write')
+  // Inline "new comment" composer (Sprint 4). The source range is captured when the comment
+  // affordance is clicked and held here, so typing in the popover can never drift the anchor.
+  const [commentDraft, setCommentDraft] = useState<{ from: number; to: number; x: number; y: number } | null>(null)
+  const [commentText, setCommentText] = useState('')
+  const [commentSaving, setCommentSaving] = useState(false)
+  const commentPopRef = useRef<HTMLDivElement>(null)
   // In-flight / failed image uploads (SPEC A1) — local, never enter the Yjs CRDT.
   const [uploads, setUploads] = useState<UploadItem[]>([])
   // Abort controllers keyed by upload id, so an unmount cancels pending uploads.
@@ -276,6 +303,9 @@ export function CollabEditor({
       HTMLAttributes: { class: 'tb-mention' },
       suggestion: buildMentionSuggestion(getMembers),
     }),
+    // Comment highlight (Sprint 4) — a mark, so it rides the Yjs CRDT and persists with the
+    // doc; the DB keeps the RelativePosition anchor as the durable record.
+    CommentHighlight,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Collaboration.configure({ document: ydoc }),
     CollaborationCursor.configure({
@@ -313,6 +343,20 @@ export function CollabEditor({
         const at = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY })
         startUploadRef.current?.(image, image.name || 'dropped-image', at?.pos ?? view.state.selection.from)
         return true
+      },
+      // Click a comment highlight → surface its thread(s) in the panel. Never consumes the
+      // click (returns false) so caret placement / normal editing is unaffected.
+      handleClick: (view, pos) => {
+        const notify = onCommentActivateRef.current
+        if (!notify) return false
+        const $pos = view.state.doc.resolve(pos)
+        const type = view.state.schema.marks.commentHighlight
+        const ids = $pos
+          .marks()
+          .filter((m) => m.type === type && m.attrs.commentId)
+          .map((m) => m.attrs.commentId as string)
+        if (ids.length) notify([...new Set(ids)])
+        return false
       },
     },
     onSelectionUpdate: () => forceTick((n) => n + 1),
@@ -558,6 +602,52 @@ export function CollabEditor({
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
   }, [mode, readOnly, drawUndo, ensureSelfTracks])
+
+  // Dismiss the new-comment popover on Escape or an outside click.
+  useEffect(() => {
+    if (!commentDraft) return
+    const close = () => { setCommentDraft(null); setCommentText('') }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onDown = (e: MouseEvent) => {
+      if (commentPopRef.current && !commentPopRef.current.contains(e.target as Node)) close()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [commentDraft])
+
+  // Open the composer anchored to the current non-empty selection.
+  const openCommentDraft = useCallback(() => {
+    const ed = editorRef.current
+    if (!ed) return
+    const { from, to } = ed.state.selection
+    if (from === to) return
+    const coords = ed.view.coordsAtPos(to)
+    setCommentText('')
+    setCommentDraft({ from, to, x: coords.left, y: coords.bottom })
+  }, [])
+
+  // Persist the comment, then paint the highlight over the captured source range.
+  const submitComment = useCallback(async () => {
+    const ed = editorRef.current
+    const draft = commentDraft
+    const body = commentText.trim()
+    if (!ed || !draft || !body || !onCreateComment) return
+    const anchor = rangeToAnchor(ed, draft.from, draft.to)
+    if (!anchor) { setCommentDraft(null); return }
+    setCommentSaving(true)
+    try {
+      const created = await onCreateComment({ ...anchor, body })
+      if (created) applyCommentMark(ed, draft.from, draft.to, created.id)
+      setCommentDraft(null)
+      setCommentText('')
+    } finally {
+      setCommentSaving(false)
+    }
+  }, [commentDraft, commentText, onCreateComment])
 
   if (!editor) return null
 
@@ -945,6 +1035,73 @@ export function CollabEditor({
             )
           })}
         </BubbleMenu>
+      )}
+
+      {/* Comment affordance — appears on any non-empty text selection (Sprint 4). Distinct
+          pluginKey so it coexists with the table BubbleMenu above. Editor+ only. */}
+      {canComment && !readOnly && (
+        <BubbleMenu
+          editor={editor}
+          pluginKey="commentBubble"
+          shouldShow={({ editor, state }) =>
+            !editor.isActive('table') && !state.selection.empty && state.selection.from !== state.selection.to
+          }
+          tippyOptions={{ placement: 'top', duration: 100, zIndex: 20 }}
+          className="rounded-lg border border-line bg-card p-1 shadow-soft"
+        >
+          <button
+            type="button"
+            title={t('comments.addComment')}
+            aria-label={t('comments.addComment')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openCommentDraft}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-medium text-muted hover:bg-ink/5 hover:text-ink"
+          >
+            <Icon.comment width={15} height={15} /> {t('comments.addComment')}
+          </button>
+        </BubbleMenu>
+      )}
+
+      {/* New-comment composer — fixed to the selection's end coords, anchored to the captured
+          range (not the live selection) so typing here cannot drift the highlight. */}
+      {commentDraft && (
+        <div
+          ref={commentPopRef}
+          className="fixed z-40 w-72 rounded-xl border border-line bg-card p-2.5 shadow-pop animate-pop"
+          style={{ left: Math.min(commentDraft.x, window.innerWidth - 300), top: commentDraft.y + 6 }}
+          role="dialog"
+          aria-label={t('comments.addComment')}
+        >
+          <textarea
+            autoFocus
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder={t('comments.placeholder')}
+            rows={3}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (commentText.trim()) submitComment() }
+            }}
+            className="w-full resize-y rounded-lg border border-line bg-paper px-2.5 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-subtle focus:border-primary"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setCommentDraft(null); setCommentText('') }}
+              className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted hover:bg-ink/5"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={submitComment}
+              disabled={!commentText.trim() || commentSaving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-fg transition-colors hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {commentSaving && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+              {t('comments.send')}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin.
