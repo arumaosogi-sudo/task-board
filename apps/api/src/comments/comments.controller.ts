@@ -33,8 +33,10 @@ export class CommentsController {
     return this.comments.list(projectId, fileId)
   }
 
+  // Viewer+ by design (SRS §2): commenting is a "reviewer" action, not an edit —
+  // matches the Google-Docs-commenter mental model. Only resolve/reopen stays Editor+.
   @Post()
-  @MinRole(Role.Editor)
+  @MinRole(Role.Viewer)
   create(
     @CurrentUser() user: AuthUser,
     @Param('id') projectId: string,
@@ -45,7 +47,7 @@ export class CommentsController {
   }
 
   @Patch(':commentId')
-  @MinRole(Role.Editor)
+  @MinRole(Role.Viewer)
   update(
     @CurrentUser() user: AuthUser,
     @Param('id') projectId: string,
@@ -57,7 +59,7 @@ export class CommentsController {
   }
 
   @Delete(':commentId')
-  @MinRole(Role.Editor)
+  @MinRole(Role.Viewer)
   @HttpCode(HttpStatus.OK)
   remove(
     @CurrentUser() user: AuthUser,

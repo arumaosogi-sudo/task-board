@@ -7,6 +7,7 @@ import type { Editor } from '@tiptap/react'
 import { Button, Field, Input, Modal, Segmented } from '../components/ui'
 import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
+import { useComments, useCreateComment } from '../lib/comments'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
@@ -26,6 +27,11 @@ import type { Language } from '../i18n'
 // so the file tree / landing shell paints without waiting for the editor chunk.
 const CollabEditor = lazy(() =>
   import('../components/CollabEditor').then((m) => ({ default: m.CollabEditor })),
+)
+// Lazy too: CommentsPanel pulls the Yjs anchor helpers (yjs / y-prosemirror). Keeping it out
+// of the eager route bundle stops those heavy deps from loading on non-editor pages (rule #9).
+const CommentsPanel = lazy(() =>
+  import('../components/CommentsPanel').then((m) => ({ default: m.CommentsPanel })),
 )
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
@@ -172,6 +178,9 @@ export default function WorkPage() {
   const save = useSaveContent(id, selectedId ?? '')
 
   const [content, setContent] = useState('')
+  // Serialized <svg> of the inline drawing layer (ADR 0005) — kept out of `content`
+  // (getHTML) to avoid the legacy-seed duplication path; injected into the PDF export.
+  const [drawingsSvg, setDrawingsSvg] = useState('')
   const [status, setStatus] = useState<SaveStatus>('idle')
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
@@ -182,9 +191,41 @@ export default function WorkPage() {
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [editorApi, setEditorApi] = useState<Editor | null>(null)
+  const [commentsOpen, setCommentsOpen] = useState(false)
+  const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
+  const isOwner = project?.myRole === 'Owner'
+  // Commenting is Viewer+ by design (SRS §2) — any project member can comment/reply,
+  // only resolve/reopen requires canEdit (Editor+). Don't reuse canEdit here.
+  const canComment = !!project?.myRole
   const loadedDocId = useRef<string | null>(null)
+
+  // Comments for the open document. Loaded whenever a doc is open (drives the header badge
+  // count as well as the panel). Not real-time — refetches on mutation (SRS Assumption #2).
+  const { data: comments, isLoading: commentsLoading } = useComments(id, doc?.id ?? null, !!doc)
+  const createComment = useCreateComment(id, doc?.id ?? '')
+  const openCommentCount = (comments ?? []).filter((c) => !c.resolved).length
+
+  // Persist a new comment; the editor paints the highlight from the returned id.
+  const handleCreateComment = useCallback(
+    async (input: { anchorFrom: unknown; anchorTo: unknown; anchorText: string; body: string }) => {
+      try {
+        const created = await createComment.mutateAsync(input)
+        return { id: created.id }
+      } catch {
+        return null
+      }
+    },
+    [createComment],
+  )
+
+  // A highlight was clicked in the document → open the panel focused on that thread.
+  const handleCommentActivate = useCallback((ids: string[]) => {
+    if (!ids.length) return
+    setActiveCommentId(ids[0])
+    setCommentsOpen(true)
+  }, [])
 
   // Roster for @mention autocomplete — derived from the already-cached project detail
   // (no extra request). Shape adapted to what CollabEditor's suggestion needs.
@@ -251,7 +292,8 @@ export default function WorkPage() {
       // Baseline the autosave flush against the loaded content — nothing to flush yet.
       savedContentRef.current = doc.content
     }
-    setPresence([]); setConnStatus('connecting')
+    setPresence([]); setConnStatus('connecting'); setDrawingsSvg('')
+    setCommentsOpen(false); setActiveCommentId(null)
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced autosave (800ms) — only after the user edits the loaded content.
@@ -348,8 +390,13 @@ export default function WorkPage() {
       `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
       `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
       `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
-      `ul[data-type="taskList"] li>div>p{margin:0}</style></head><body>` +
-      `${body}` +
+      `ul[data-type="taskList"] li>div>p{margin:0}` +
+      // Inline drawing layer (ADR 0005 D5). The print body is a single flowing column,
+      // not paginated A4, so the overlay is positioned relative to the whole document —
+      // shapes/relative position are preserved (owner-accepted limitation), text may not
+      // align. The wrapper is position:relative so the absolute SVG anchors to it.
+      `.tb-print-wrap{position:relative}</style></head><body>` +
+      `<div class="tb-print-wrap">${body}${drawingsSvg}</div>` +
       `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
     )
     w.document.close()
@@ -459,8 +506,18 @@ export default function WorkPage() {
                   </div>
                 )}
 
+                <button onClick={() => { setActiveCommentId(null); setCommentsOpen(true) }} title={t('comments.title')}
+                  className={cn('relative grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5', presence.length === 0 && 'ml-auto')}
+                  aria-label={t('comments.title')}>
+                  <Icon.comment width={17} height={17} />
+                  {openCommentCount > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 grid min-w-[15px] place-items-center rounded-full bg-primary px-1 text-[9px] font-semibold leading-[15px] text-primary-fg">
+                      {openCommentCount}
+                    </span>
+                  )}
+                </button>
                 <button onClick={() => setHistoryOpen(true)} title={t('work.versionHistory')}
-                  className={cn('grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5', presence.length === 0 && 'ml-auto')}
+                  className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
                   aria-label={t('work.versionHistory')}>
                   <Icon.clock width={17} height={17} />
                 </button>
@@ -483,6 +540,7 @@ export default function WorkPage() {
                       <CollabEditor
                         key={doc.id}
                         fileId={doc.id}
+                        projectId={doc.projectId}
                         token={getToken}
                         initialContent={doc.content}
                         orientation={doc.orientation === 'landscape' ? 'landscape' : 'portrait'}
@@ -493,6 +551,10 @@ export default function WorkPage() {
                         onStatusChange={handleStatus}
                         onReady={handleReady}
                         members={mentionMembers}
+                        onDrawingsSvgChange={setDrawingsSvg}
+                        canComment={canComment}
+                        onCreateComment={handleCreateComment}
+                        onCommentActivate={handleCommentActivate}
                       />
                     </Suspense>
                   </EditorErrorBoundary>
@@ -502,6 +564,27 @@ export default function WorkPage() {
           )}
         </main>
       </div>
+
+      {/* Comments side drawer (Sprint 4). Mounted only once opened so its chunk (with the Yjs
+          anchor helpers) is fetched on demand, not with the page. */}
+      {selectedId && doc && commentsOpen && (
+        <Suspense fallback={null}>
+          <CommentsPanel
+            open={commentsOpen}
+            onClose={() => setCommentsOpen(false)}
+            projectId={id}
+            fileId={doc.id}
+            comments={comments}
+            isLoading={commentsLoading}
+            editor={editorApi}
+            canComment={canComment}
+            canResolve={!!canEdit}
+            isOwner={!!isOwner}
+            currentUserId={user?.id}
+            activeCommentId={activeCommentId}
+          />
+        </Suspense>
+      )}
 
       {/* Version history + diff (Phase 4.5) */}
       {selectedId && doc && (

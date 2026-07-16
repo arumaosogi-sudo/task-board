@@ -71,6 +71,21 @@ cd apps/api && npx prisma migrate deploy   # or `prisma migrate dev` while itera
 > (`:6543?pgbouncer=true`) and `DIRECT_URL` at the session pooler (`:5432`). Migrations
 > use `DIRECT_URL`.
 
+> **Editor image uploads (Sprint 4, ADR 0004).** Inserting/pasting an image or a drawing
+> uploads it to a **private Supabase Storage bucket** and stores only a short URL in the
+> document (keeps the Yjs CRDT small). Set these in `apps/api/.env` — without them the
+> upload route replies `503` and image insertion is disabled:
+>
+> | Var | Purpose |
+> |---|---|
+> | `SUPABASE_URL` | Project URL, e.g. `https://<ref>.supabase.co` |
+> | `SUPABASE_SERVICE_ROLE_KEY` | Server-only secret. **Never** expose to the frontend or commit it. |
+> | `SUPABASE_STORAGE_BUCKET` | Bucket name (create it **private**). Default `file-assets`. |
+>
+> Create the bucket once in Supabase → Storage (Dashboard or `supabase storage`), set it
+> **private**, then paste the service-role key from Project Settings → API. See
+> `apps/api/.env.example` for the full annotated block (incl. `SUPABASE_SIGNED_URL_TTL`).
+
 ## Development
 
 ```bash
