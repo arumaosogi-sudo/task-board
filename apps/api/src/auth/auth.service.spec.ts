@@ -5,6 +5,14 @@ import { Test } from '@nestjs/testing'
 import { User } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
 import { AuthService } from './auth.service'
+
+// Wrap the real bcrypt.compare in a jest.fn so we can assert it *runs* on the
+// login miss path (the timing-oracle guard) while keeping true hashing behaviour
+// for every other assertion in this file. hash/hashSync stay the genuine article.
+jest.mock('bcrypt', () => {
+  const actual = jest.requireActual('bcrypt')
+  return { ...actual, compare: jest.fn(actual.compare) }
+})
 import { hashToken } from './token.util'
 import { PrismaService } from '../prisma/prisma.service'
 import { UsersService } from '../users/users.service'
@@ -30,7 +38,7 @@ const SECRET = 'unit-test-jwt-secret-at-least-32-characters-long'
 type Fn = jest.Mock
 interface PrismaMock {
   user: { findUnique: Fn; findFirst: Fn; create: Fn; update: Fn; delete: Fn }
-  refreshToken: { create: Fn; findUnique: Fn; delete: Fn; deleteMany: Fn }
+  refreshToken: { create: Fn; findUnique: Fn; update: Fn; delete: Fn; deleteMany: Fn }
   emailVerification: { create: Fn; findUnique: Fn; deleteMany: Fn }
   passwordReset: { create: Fn; findUnique: Fn; update: Fn }
   project: { count: Fn }
@@ -90,7 +98,13 @@ describe('AuthService (P1 auth flow)', () => {
   beforeEach(async () => {
     prisma = {
       user: { findUnique: jest.fn(), findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), delete: jest.fn() },
-      refreshToken: { create: jest.fn(), findUnique: jest.fn(), delete: jest.fn(), deleteMany: jest.fn() },
+      refreshToken: {
+        create: jest.fn(),
+        findUnique: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+        deleteMany: jest.fn(),
+      },
       emailVerification: { create: jest.fn(), findUnique: jest.fn(), deleteMany: jest.fn() },
       passwordReset: { create: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       project: { count: jest.fn() },
@@ -107,6 +121,7 @@ describe('AuthService (P1 auth flow)', () => {
     )
     prisma.refreshToken.create.mockResolvedValue({ id: 'rt1' })
     prisma.refreshToken.delete.mockResolvedValue({ id: 'rt1' })
+    prisma.refreshToken.update.mockResolvedValue({ id: 'rt1', familyId: 'fam1' })
 
     mail = {
       sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
@@ -249,6 +264,20 @@ describe('AuthService (P1 auth flow)', () => {
       })
     })
 
+    it('still runs a bcrypt.compare on the miss path (timing-oracle guard)', async () => {
+      seedUsers([]) // no such user
+      ;(bcrypt.compare as jest.Mock).mockClear()
+
+      await expect(service.login('ghost', 'secret123')).rejects.toBeInstanceOf(UnauthorizedException)
+
+      // A real bcrypt comparison must happen even when the account is missing, so a
+      // wrong-password (existing user) and a no-such-user response cost the same time.
+      expect(bcrypt.compare as jest.Mock).toHaveBeenCalledTimes(1)
+      const [pw, hash] = (bcrypt.compare as jest.Mock).mock.calls[0]
+      expect(pw).toBe('secret123')
+      expect(String(hash).startsWith('$2')).toBe(true) // compared against a real bcrypt hash
+    })
+
     it('blocks login until the email is verified (Forbidden), even with the right password', async () => {
       seedUsers([makeUser({ emailVerified: false })])
 
@@ -302,32 +331,54 @@ describe('AuthService (P1 auth flow)', () => {
       await expect(service.validateRefreshToken('stale')).rejects.toBeInstanceOf(UnauthorizedException)
     })
 
-    it('rotateRefresh: deletes the old row and issues a brand-new pair (hash persisted)', async () => {
+    it('rotateRefresh: stamps the old row rotatedAt and issues a new pair in the SAME family', async () => {
+      prisma.refreshToken.update.mockResolvedValue({ id: 'rt-old', familyId: 'fam-7' })
+
       const res = await service.rotateRefresh(makeUser(), 'rt-old')
 
-      // Old token invalidated by id...
-      expect(prisma.refreshToken.delete).toHaveBeenCalledWith({ where: { id: 'rt-old' } })
-      // ...and a fresh refresh persisted as a hash.
+      // Old token is kept but marked consumed (not deleted) so a later replay of it
+      // can be caught as reuse.
+      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
+        where: { id: 'rt-old' },
+        data: { rotatedAt: expect.any(Date) },
+      })
+      expect(prisma.refreshToken.delete).not.toHaveBeenCalled()
+      // ...and a fresh refresh persisted as a hash, inheriting the family id.
       expect(prisma.refreshToken.create).toHaveBeenCalledTimes(1)
-      const created = lastCall(prisma.refreshToken.create) as { data: { token: string } }
+      const created = lastCall(prisma.refreshToken.create) as { data: { token: string; familyId: string } }
       expect(created.data.token).toBe(hashToken(res.refreshToken))
+      expect(created.data.familyId).toBe('fam-7')
       // New access token is valid.
       const payload = await jwt.verifyAsync(res.accessToken, { secret: SECRET })
       expect(payload.sub).toBe('u1')
     })
 
-    // End-to-end rotation over an in-memory token store: proves the *reuse* case —
-    // once a refresh is rotated, replaying the old raw value is rejected while the
-    // freshly-minted one works. This is the property an attacker probes.
-    it('rotation flow: after rotating, the OLD refresh is rejected and the NEW one is accepted', async () => {
-      const user = makeUser({ emailVerified: true })
-      seedUsers([user])
-
+    // End-to-end rotation over an in-memory token store. Models the token-family
+    // scheme: rotating stamps the old row `rotatedAt` (kept, not deleted); a fresh
+    // token joins the same family; and replaying a consumed token is caught as
+    // reuse, revoking the whole family. This is the property an attacker probes.
+    interface RtRow {
+      id: string
+      userId: string
+      token: string
+      familyId: string
+      rotatedAt: Date | null
+      expiresAt: Date
+    }
+    const wireTokenStore = (user: User) => {
       let seq = 0
-      const store = new Map<string, { id: string; userId: string; token: string; expiresAt: Date }>()
+      const store = new Map<string, RtRow>()
       prisma.refreshToken.create.mockImplementation(
-        async ({ data }: { data: { userId: string; token: string; expiresAt: Date } }) => {
-          const row = { id: `rt${++seq}`, ...data }
+        async ({ data }: { data: { userId: string; token: string; expiresAt: Date; familyId?: string } }) => {
+          const id = `rt${++seq}`
+          const row: RtRow = {
+            id,
+            userId: data.userId,
+            token: data.token,
+            familyId: data.familyId ?? `fam${seq}`, // omitted on login → new family
+            rotatedAt: null,
+            expiresAt: data.expiresAt,
+          }
           store.set(data.token, row)
           return row
         },
@@ -336,11 +387,31 @@ describe('AuthService (P1 auth flow)', () => {
         const row = store.get(where.token)
         return row ? { ...row, user } : null
       })
-      prisma.refreshToken.delete.mockImplementation(async ({ where }: { where: { id: string } }) => {
-        const found = [...store.values()].find((r) => r.id === where.id)
-        if (found) store.delete(found.token)
-        return found ?? null
+      prisma.refreshToken.update.mockImplementation(
+        async ({ where, data }: { where: { id: string }; data: { rotatedAt: Date } }) => {
+          const found = [...store.values()].find((r) => r.id === where.id)
+          if (!found) throw new Error('not found')
+          found.rotatedAt = data.rotatedAt
+          return found
+        },
+      )
+      prisma.refreshToken.deleteMany.mockImplementation(async ({ where }: { where: { familyId?: string; userId?: string } }) => {
+        let count = 0
+        for (const [k, r] of store) {
+          if ((where.familyId && r.familyId === where.familyId) || (where.userId && r.userId === where.userId)) {
+            store.delete(k)
+            count++
+          }
+        }
+        return { count }
       })
+      return store
+    }
+
+    it('rotation flow: after rotating, the OLD refresh is rejected as reuse and the NEW one is accepted', async () => {
+      const user = makeUser({ emailVerified: true })
+      seedUsers([user])
+      wireTokenStore(user)
 
       // Get an initial refresh token the honest way.
       const first = await service.login('alice', 'secret123')
@@ -350,13 +421,32 @@ describe('AuthService (P1 auth flow)', () => {
       const rotated = await service.rotateRefresh(user, tokenId)
 
       expect(rotated.refreshToken).not.toBe(first.refreshToken)
-      // Replaying the old token is now denied (it was deleted on rotation).
-      await expect(service.validateRefreshToken(first.refreshToken)).rejects.toMatchObject({
-        response: { code: 'invalid-refresh-token' },
-      })
-      // The new token still authenticates.
+      // The new token authenticates fine...
       const again = await service.validateRefreshToken(rotated.refreshToken)
       expect(again.user.id).toBe('u1')
+      // ...but replaying the consumed old token is a theft signal → reuse alarm.
+      await expect(service.validateRefreshToken(first.refreshToken)).rejects.toMatchObject({
+        response: { code: 'refresh-token-reuse' },
+      })
+    })
+
+    it('reuse detection revokes the WHOLE family: after an alarm, the freshly-minted token is dead too', async () => {
+      const user = makeUser({ emailVerified: true })
+      seedUsers([user])
+      wireTokenStore(user)
+
+      const first = await service.login('alice', 'secret123')
+      const { tokenId } = await service.validateRefreshToken(first.refreshToken)
+      const rotated = await service.rotateRefresh(user, tokenId)
+
+      // Attacker replays the stolen (already-rotated) token → family revoked.
+      await expect(service.validateRefreshToken(first.refreshToken)).rejects.toMatchObject({
+        response: { code: 'refresh-token-reuse' },
+      })
+      // The legitimate current token is now also invalid (whole family killed).
+      await expect(service.validateRefreshToken(rotated.refreshToken)).rejects.toMatchObject({
+        response: { code: 'invalid-refresh-token' },
+      })
     })
 
     it('logoutAll: revokes every refresh token for the user', async () => {

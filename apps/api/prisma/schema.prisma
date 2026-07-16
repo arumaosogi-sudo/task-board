@@ -63,15 +63,22 @@ model UserSetting {
 }
 
 model RefreshToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  token     String   @unique
+  token     String    @unique
+  // All tokens minted from one login share a familyId. On rotation the old token
+  // is kept but stamped `rotatedAt`; if a rotated (already-consumed) token is ever
+  // presented again it means the token was stolen/replayed, so the whole family is
+  // revoked. A live session never replays a consumed token, so this is a true alarm.
+  familyId  String    @default(cuid())
+  rotatedAt DateTime?
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([familyId])
 }
 
 model EmailVerification {
