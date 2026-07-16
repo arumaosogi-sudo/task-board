@@ -583,17 +583,20 @@ export function CollabEditor({
     if (e) { ensureSelfTracks(yUndoPluginKey.getState(e.state)?.undoManager); yRedo(e.state); e.view.focus() }
   }
 
-  // Shared toolbar button base: soft hover transition + keyboard focus ring (a11y —
-  // buttons preventDefault on mousedown so the ring shows on Tab focus, not on click).
+  // Shared toolbar button base: soft hover transition + tactile press (active:scale) +
+  // keyboard focus ring (a11y — buttons preventDefault on mousedown so the ring shows on
+  // Tab focus, not on click). transition covers color+transform so the press reads; under
+  // prefers-reduced-motion the global reset zeroes the duration, so it just snaps.
   const btnBase =
-    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold transition-colors ' +
+    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-body-sm font-semibold ' +
+    'transition duration-150 active:scale-95 ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
   const btnIdle = 'text-muted hover:bg-ink/5 hover:text-ink'
   // One divider style everywhere so the toolbar rhythm stays even (DESIGN_SPEC).
   const dividerCls = 'mx-1.5 h-5 w-px flex-shrink-0 bg-line'
   // Native selects: match the button chrome + a calm focus ring instead of a hard outline.
   const selectCls =
-    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] transition-colors ' +
+    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-body-sm transition duration-150 ' +
     'hover:border-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
 
   const MODE_TABS: { key: EditorMode; label: string }[] = [
@@ -644,7 +647,7 @@ export function CollabEditor({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setMode(m.key)}
                     className={cn(
-                      'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
+                      'h-8 rounded-md px-3 text-body-sm font-medium transition duration-150 active:scale-[0.97]',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-paper',
                       active ? 'bg-card text-ink shadow-soft' : 'text-muted hover:bg-ink/5 hover:text-ink',
                     )}
@@ -661,7 +664,7 @@ export function CollabEditor({
                   type="button" title="ย้อนกลับ (Ctrl+Z)" aria-label="ย้อนกลับ"
                   disabled={!canUndo}
                   onMouseDown={(e) => e.preventDefault()} onClick={doUndo}
-                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canUndo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg transition duration-150 active:scale-95', btnIdle, !canUndo && 'opacity-40 hover:bg-transparent hover:text-muted active:scale-100')}
                 >
                   <Icon.undo width={16} height={16} />
                 </button>
@@ -669,7 +672,7 @@ export function CollabEditor({
                   type="button" title="ทำซ้ำ (Ctrl+Y)" aria-label="ทำซ้ำ"
                   disabled={!canRedo}
                   onMouseDown={(e) => e.preventDefault()} onClick={doRedo}
-                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canRedo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg transition duration-150 active:scale-95', btnIdle, !canRedo && 'opacity-40 hover:bg-transparent hover:text-muted active:scale-100')}
                 >
                   <Icon.redo width={16} height={16} />
                 </button>
@@ -784,9 +787,9 @@ export function CollabEditor({
                       aria-pressed={drawColor === c}
                       onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawColor(c)}
                       className={cn(
-                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition',
+                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition duration-150 hover:scale-110 active:scale-95',
                         c === '#ffffff' && 'border border-line',
-                        drawColor === c && 'ring-2 ring-primary',
+                        drawColor === c ? 'ring-2 ring-primary shadow-soft' : 'hover:shadow-soft',
                       )}
                       style={{ background: c }}
                     />
@@ -810,9 +813,9 @@ export function CollabEditor({
                       key={s} type="button" title={`${t('editor.brushSize')} ${s}`} aria-label={`${t('editor.brushSize')} ${s}`}
                       aria-pressed={drawSize === s}
                       onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawSize(s)}
-                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
+                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg transition duration-150 active:scale-90', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
                     >
-                      <span className="rounded-full bg-ink" style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
+                      <span className={cn('rounded-full transition-colors', drawSize === s ? 'bg-primary' : 'bg-ink')} style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
                     </button>
                   ))}
                 </div>
@@ -825,7 +828,7 @@ export function CollabEditor({
                 >
                   <Icon.trash width={16} height={16} />
                 </button>
-                <span className="ml-1 flex-shrink-0 text-[12px] text-muted">{t('editor.stylusHint')}</span>
+                <span className="ml-1 flex-shrink-0 text-caption text-muted">{t('editor.stylusHint')}</span>
               </div>
             )}
 
@@ -876,7 +879,7 @@ export function CollabEditor({
             u.status === 'uploading' ? (
               <div
                 key={u.id}
-                className="flex max-w-[320px] items-center gap-3 rounded-lg border border-line bg-paper p-3 text-[13px] text-muted"
+                className="flex max-w-[320px] animate-pop items-center gap-3 rounded-xl border border-line bg-card p-3 text-body-sm text-muted shadow-soft"
                 role="status"
               >
                 <svg className="animate-spin flex-shrink-0" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -893,7 +896,7 @@ export function CollabEditor({
             ) : (
               <div
                 key={u.id}
-                className="flex max-w-[360px] items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-[13px] text-danger"
+                className="flex max-w-[360px] animate-pop items-center gap-2 rounded-xl border border-danger/30 bg-danger/5 p-3 text-body-sm text-danger shadow-soft"
                 role="alert"
               >
                 <Icon.warning width={16} height={16} />
@@ -920,7 +923,7 @@ export function CollabEditor({
           editor={editor}
           shouldShow={({ editor }) => editor.isActive('table')}
           tippyOptions={{ placement: 'top', duration: 100, zIndex: 20 }}
-          className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line bg-card p-1 shadow-soft"
+          className="flex flex-wrap items-center gap-0.5 rounded-xl border border-line bg-card p-1 shadow-pop"
         >
           {TABLE_ACTIONS.map((a) => {
             const disabled = a.can ? !a.can(editor) : false
@@ -933,8 +936,8 @@ export function CollabEditor({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => a.run(editor)}
                 className={cn(
-                  'rounded px-1.5 py-1 text-[11px] font-medium text-muted hover:bg-ink/5 hover:text-ink',
-                  disabled && 'opacity-40 hover:bg-transparent',
+                  'rounded-md px-1.5 py-1 text-caption font-medium text-muted transition duration-150 hover:bg-ink/5 hover:text-ink active:scale-95',
+                  disabled && 'opacity-40 hover:bg-transparent active:scale-100',
                 )}
               >
                 {a.title}

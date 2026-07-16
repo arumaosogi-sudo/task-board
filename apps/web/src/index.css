@@ -144,16 +144,20 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-box[data-selected='true'] { @apply ring-2 ring-primary/60; }
 .tb-box-drag {
   @apply absolute -left-2 -top-2 grid h-6 w-6 place-items-center rounded-md
-         bg-card text-muted shadow-soft select-none;
+         bg-card text-muted shadow-soft select-none transition duration-150;
   cursor: grab;
   touch-action: none;
 }
-.tb-box-drag:active { cursor: grabbing; }
+.tb-box-drag:hover { @apply text-primary shadow-pop; }
+.tb-box-drag:active { cursor: grabbing; transform: scale(0.94); }
 .tb-box-resize {
-  @apply absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-primary;
+  @apply absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-primary
+         shadow-soft transition duration-150;
   cursor: ew-resize;
   touch-action: none;
 }
+.tb-box-resize:hover { transform: scale(1.25); }
+.tb-box-resize:active { transform: scale(1.1); }
 
 /* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
    <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */
@@ -232,18 +236,24 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-img-wrap img { max-width: 100%; border-radius: 8px; }
 /* Google Docs style: no border/outline on the selected image — the corner resize
    handle (rendered by the node view) is the only selection affordance. */
+/* Resize handle follows the active accent (was hard-locked to violet #7c5cff, which
+   looked off in the other five themes). border = card token so it reads on any page. */
 .tb-img-handle {
   position: absolute;
   right: -6px;
   bottom: -6px;
   width: 14px;
   height: 14px;
-  background: #7c5cff;
-  border: 2px solid #fff;
+  background: rgb(var(--c-primary));
+  border: 2px solid rgb(var(--c-card));
   border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(29 35 51 / 0.18);
   cursor: nwse-resize;
   touch-action: none;
+  transition: transform 0.15s ease;
 }
+.tb-img-handle:hover { transform: scale(1.25); }
+.tb-img-handle:active { transform: scale(1.1); }
 
 /* ---- Live collaboration cursors (Phase 4.3, CollaborationCursor) ---- */
 /* Caret border + label background come from each peer's inline color (see presence.ts). */

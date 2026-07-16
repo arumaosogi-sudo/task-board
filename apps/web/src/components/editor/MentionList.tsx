@@ -92,13 +92,13 @@ export const MentionList = forwardRef<MentionListHandle, MentionListProps>(funct
             onMouseDown={(e) => { e.preventDefault(); pick(idx) }}
             onMouseEnter={() => setSelected(idx)}
             className={cn(
-              'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left',
+              'flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-150',
               idx === selected ? 'bg-primary-soft text-primary' : 'text-ink hover:bg-ink/5',
             )}
           >
             <span
               className={cn(
-                'grid size-7 shrink-0 place-items-center rounded-full text-[11px] font-semibold',
+                'grid size-7 shrink-0 place-items-center rounded-full text-label font-semibold transition-colors duration-150',
                 idx === selected ? 'bg-primary text-primary-fg' : 'bg-ink/10 text-muted',
               )}
             >
