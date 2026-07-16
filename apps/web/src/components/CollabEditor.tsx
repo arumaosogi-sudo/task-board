@@ -522,19 +522,42 @@ export function CollabEditor({
     if (arr.length > 0) ydoc.transact(() => arr.delete(0, arr.length), DRAW_ORIGIN)
   }, [ydoc])
 
-  // In draw mode, Ctrl+Z / Ctrl+Y drive the *drawing* undo stack (the editor's own keymap
-  // targets text). Capture-phase so we win before ProseMirror sees the key.
+  // Yjs' UndoManager constructor registers itself in `trackedOrigins` so that its own
+  // undo transactions get recorded as redo items (undo pushes the inverse onto redoStack
+  // only when the undo transaction's origin — the manager — is tracked). React StrictMode's
+  // dev double-mount tears the plugin's UndoManager down (whose destroy() does
+  // `trackedOrigins.delete(this)`) while the Y.Doc + manager singletons are reused on the
+  // remount — leaving a manager that still *applies* undo but never records a redo item, so
+  // the redo button/shortcut silently does nothing. (The headless undoRedo test only
+  // single-mounts, so it never reproduces this; production renders StrictMode once, so it's
+  // unaffected — but we keep this robust either way.) Re-assert the invariant the instant we
+  // act: cheap, idempotent, and a no-op when it's already tracked.
+  const ensureSelfTracks = useCallback((um?: Y.UndoManager | null) => {
+    if (um) um.trackedOrigins.add(um)
+  }, [])
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z. In draw mode we drive the *drawing* stack directly
+  // (capture-phase, so we win before ProseMirror's keymap); in write/insert mode we let the
+  // y-prosemirror keymap do the undo/redo but first guarantee the text manager self-tracks.
   useEffect(() => {
-    if (mode !== 'draw' || readOnly) return
+    if (readOnly) return
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
       const k = e.key.toLowerCase()
-      if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); drawUndo.undo() }
-      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); e.stopPropagation(); drawUndo.redo() }
+      const isUndo = k === 'z' && !e.shiftKey
+      const isRedo = k === 'y' || (k === 'z' && e.shiftKey)
+      if (!isUndo && !isRedo) return
+      if (mode === 'draw') {
+        e.preventDefault(); e.stopPropagation()
+        ensureSelfTracks(drawUndo)
+        if (isUndo) drawUndo.undo(); else drawUndo.redo()
+      } else {
+        ensureSelfTracks(yUndoPluginKey.getState(editorRef.current!.state)?.undoManager)
+      }
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [mode, readOnly, drawUndo])
+  }, [mode, readOnly, drawUndo, ensureSelfTracks])
 
   if (!editor) return null
 
@@ -550,14 +573,14 @@ export function CollabEditor({
   const canUndo = drawingMode ? drawUndo.undoStack.length > 0 : (undoManager?.undoStack.length ?? 0) > 0
   const canRedo = drawingMode ? drawUndo.redoStack.length > 0 : (undoManager?.redoStack.length ?? 0) > 0
   const doUndo = () => {
-    if (drawingMode) { drawUndo.undo(); return }
+    if (drawingMode) { ensureSelfTracks(drawUndo); drawUndo.undo(); return }
     const e = editorRef.current
-    if (e) { yUndo(e.state); e.view.focus() }
+    if (e) { ensureSelfTracks(yUndoPluginKey.getState(e.state)?.undoManager); yUndo(e.state); e.view.focus() }
   }
   const doRedo = () => {
-    if (drawingMode) { drawUndo.redo(); return }
+    if (drawingMode) { ensureSelfTracks(drawUndo); drawUndo.redo(); return }
     const e = editorRef.current
-    if (e) { yRedo(e.state); e.view.focus() }
+    if (e) { ensureSelfTracks(yUndoPluginKey.getState(e.state)?.undoManager); yRedo(e.state); e.view.focus() }
   }
 
   // Shared toolbar button base: soft hover transition + keyboard focus ring (a11y —

@@ -88,4 +88,34 @@ describe('editor undo/redo wiring (SPEC A2)', () => {
     editor.commands.insertContent('second')
     expect(stacks(editor).canRedo).toBe(false)
   })
+
+  // Regression for the owner-reported "redo does nothing" bug that only reproduces in the
+  // running app, never in the single-mount tests above. Root cause: Yjs' UndoManager
+  // self-registers in `trackedOrigins` so that its OWN undo transaction is tracked and an
+  // inverse gets pushed onto the redoStack. React StrictMode's dev double-mount tears the
+  // plugin's UndoManager down — destroy() does `trackedOrigins.delete(this)` — while the
+  // Y.Doc/manager singletons are reused on remount, leaving a manager that still *applies*
+  // undo but silently never records a redo item. CollabEditor.ensureSelfTracks re-asserts
+  // the invariant before every undo/redo; this test proves both the failure and the fix.
+  it('regression: a manager stripped of its self-origin breaks redo; re-tracking restores it', () => {
+    current = mountEditor()
+    const { editor } = current
+    const um = yUndoPluginKey.getState(editor.state)!.undoManager
+    expect(um.trackedOrigins.has(um)).toBe(true) // Yjs' constructor invariant
+
+    // Simulate the StrictMode teardown that removed it (manager reused afterwards).
+    um.trackedOrigins.delete(um)
+    editor.commands.insertContent('alpha')
+    yUndo(editor.state)
+    expect(editor.getText()).not.toContain('alpha') // undo still visibly applies…
+    expect(stacks(editor).canRedo).toBe(false) // …but no redo item was recorded — the bug.
+
+    // ensureSelfTracks: re-assert the invariant, and redo records + replays correctly.
+    um.trackedOrigins.add(um)
+    editor.commands.insertContent('beta')
+    yUndo(editor.state)
+    expect(stacks(editor).canRedo).toBe(true)
+    yRedo(editor.state)
+    expect(editor.getText()).toContain('beta')
+  })
 })
