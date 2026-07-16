@@ -193,6 +193,28 @@
   "tasklist": {
     "insert": "Insert checklist"
   },
+  "editor": {
+    "modesLabel": "Editing mode",
+    "write": "Write",
+    "draw": "Draw",
+    "insert": "Insert",
+    "openDraw": "Open drawing area",
+    "stylusHint": "(stylus supported)",
+    "pen": "Pen",
+    "highlighter": "Highlighter",
+    "eraser": "Eraser",
+    "penColor": "Pen color",
+    "brushSize": "Brush size",
+    "clearDrawing": "Clear all drawing",
+    "drawHint": "Drag a pen/mouse to draw on the page — stylus supported (pressure sets thickness)",
+    "insertImage": "Insert image",
+    "insertBox": "Insert text box",
+    "deleteBox": "Delete text box",
+    "uploading": "Uploading image…",
+    "uploadFailed": "Upload failed",
+    "retry": "Retry",
+    "dismiss": "Dismiss"
+  },
   "mentions": {
     "listLabel": "Suggested members",
     "empty": "No members found"

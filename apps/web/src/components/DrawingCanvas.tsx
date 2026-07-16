@@ -10,9 +10,15 @@ import { createPortal } from 'react-dom'
 import { Button, Modal } from './ui'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
+import { svgToPngBlob } from './editor/drawing'
 
-const W = 720
-const H = 460
+// SPEC A3 — canvas matches the document's A4 aspect (210:297) by orientation, so a
+// drawing drops into the page without post-hoc stretching. viewBox units are kept
+// small (a scaled-down A4) to keep path data compact.
+const A4 = {
+  portrait: { W: 420, H: 594 },
+  landscape: { W: 594, H: 420 },
+} as const
 // 12 presets + a free color picker.
 const COLORS = [
   '#1d2333', '#e5484d', '#0ea5e9', '#16a34a', '#f59e0b', '#7c5cff',
@@ -37,12 +43,16 @@ const TOOLS: { key: Tool; title: string; icon: keyof typeof Icon }[] = [
 ]
 
 export function DrawingCanvas({
-  open, onClose, onInsert,
+  open, onClose, onInsert, orientation = 'portrait',
 }: {
   open: boolean
   onClose: () => void
-  onInsert: (svg: string) => void
+  /** Receives the finished drawing as a PNG Blob (uploaded by the parent). */
+  onInsert: (png: Blob) => void
+  /** Document geometry — sets the A4 aspect of the drawing surface. */
+  orientation?: 'portrait' | 'landscape'
 }) {
+  const { W, H } = A4[orientation]
   const svgRef = useRef<SVGSVGElement>(null)
   // Full-snapshot undo/redo history. `strokes` is always the snapshot at `ptr`.
   const [history, setHistory] = useState<Stroke[][]>([[]])
@@ -142,16 +152,31 @@ export function DrawingCanvas({
         `stroke-linecap="${s.tool === 'highlighter' ? 'butt' : 'round'}" stroke-linejoin="round"/>`,
       )
       .join('')
-    return `<svg class="tb-drawing" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" ` +
-      `style="width:100%;max-width:${W}px;height:auto;border:1px solid #e5e7eb;border-radius:12px;background:#fff">` +
+    // Explicit width/height (not just viewBox) so the rasterizer gets an intrinsic size
+    // in every browser (Firefox renders a viewBox-only SVG at 0×0 into a canvas).
+    return `<svg class="tb-drawing" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" ` +
+      `xmlns="http://www.w3.org/2000/svg" ` +
+      `style="width:100%;max-width:${W}px;height:auto;background:#fff">` +
       `${paths}</svg>`
   }
 
-  function insert() {
+  const [inserting, setInserting] = useState(false)
+
+  async function insert() {
     if (strokes.length === 0) { onClose(); return }
-    onInsert(buildSvg())
-    resetAll()
-    onClose()
+    setInserting(true)
+    try {
+      const png = await svgToPngBlob(buildSvg(), W, H)
+      onInsert(png)
+      resetAll()
+      onClose()
+    } catch {
+      // Rasterization is a local, synchronous-ish op; a failure here is rare (canvas
+      // unsupported). Surface it instead of silently dropping the drawing.
+      alert('ไม่สามารถแปลงภาพวาดได้ กรุณาลองใหม่')
+    } finally {
+      setInserting(false)
+    }
   }
 
   const canUndo = ptr > 0
@@ -168,11 +193,13 @@ export function DrawingCanvas({
       open={open}
       onClose={() => { resetAll(); onClose() }}
       title="วาดภาพ"
-      width="max-w-[780px]"
+      width={orientation === 'portrait' ? 'max-w-[560px]' : 'max-w-[780px]'}
       footer={
         <>
           <Button variant="ghost" onClick={() => { resetAll(); onClose() }}>ยกเลิก</Button>
-          <Button onClick={insert} disabled={strokes.length === 0}>แทรกลงเอกสาร</Button>
+          <Button onClick={insert} disabled={strokes.length === 0 || inserting}>
+            {inserting ? 'กำลังแทรก…' : 'แทรกลงเอกสาร'}
+          </Button>
         </>
       }
     >
@@ -251,7 +278,11 @@ export function DrawingCanvas({
               strokeLinecap={current.tool === 'highlighter' ? 'butt' : 'round'} strokeLinejoin="round" />
           )}
         </svg>
-        <p className="text-[12px] text-muted">ปากกา · ปากกาเน้นข้อความ · ยางลบ — รองรับ stylus (ปรับความหนาตามแรงกด)</p>
+        <p className="text-[12px] text-muted">
+          {strokes.length === 0
+            ? 'ลากเมาส์หรือปากกาเพื่อเริ่มวาด — รองรับ stylus (ปรับความหนาตามแรงกด)'
+            : 'ปากกา · ปากกาเน้นข้อความ · ยางลบ — รองรับ stylus (ปรับความหนาตามแรงกด)'}
+        </p>
       </div>
     </Modal>,
     document.body,

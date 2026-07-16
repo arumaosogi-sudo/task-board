@@ -139,6 +139,21 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 }
 .tb-prose td, .tb-prose th { @apply relative; }
 .tb-box { @apply my-3 rounded-xl border-l-4 border-primary bg-primary-soft/50 px-4 py-3; }
+/* SPEC B — selected box shows a subtle ring plus a drag handle (reorder) and a
+   corner resize handle. Handles only render while editing + selected (BoxView). */
+.tb-box[data-selected='true'] { @apply ring-2 ring-primary/60; }
+.tb-box-drag {
+  @apply absolute -left-2 -top-2 grid h-6 w-6 place-items-center rounded-md
+         bg-card text-muted shadow-soft select-none;
+  cursor: grab;
+  touch-action: none;
+}
+.tb-box-drag:active { cursor: grabbing; }
+.tb-box-resize {
+  @apply absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-primary;
+  cursor: ew-resize;
+  touch-action: none;
+}
 
 /* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
    <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */

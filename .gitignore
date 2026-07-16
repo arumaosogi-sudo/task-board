@@ -35,3 +35,6 @@ yarn-error.log*
 
 # Test coverage
 coverage/
+
+# Nested clone of this repo (local only)
+Project_task_borad_appvs01/

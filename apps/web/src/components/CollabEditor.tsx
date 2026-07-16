@@ -31,20 +31,43 @@ import Mention from '@tiptap/extension-mention'
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
 import { HocuspocusProvider } from '@hocuspocus/provider'
+import { yUndoPluginKey, undo as yUndo, redo as yRedo } from 'y-prosemirror'
 import * as Y from 'yjs'
 import { cn } from '../lib/cn'
 import { Icon } from '../lib/icons'
-import { DrawingCanvas } from './DrawingCanvas'
+import { apiError } from '../lib/api'
+import { FilesApi } from '../lib/files'
 import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
-import { migrateLegacyDrawings, svgToDataUrl } from './editor/drawing'
+import { migrateLegacyDrawings } from './editor/drawing'
+import { DrawingOverlay } from './editor/DrawingOverlay'
+import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
 import { buildMentionSuggestion } from './editor/mentionSuggestion'
 import type { MentionMember } from './editor/MentionList'
 
 const COLLAB_URL = import.meta.env.VITE_COLLAB_URL || 'ws://localhost:3002'
-const MAX_IMAGE_BYTES = 3 * 1024 * 1024 // 3MB — embedded as a data URL into the doc
+const MAX_IMAGE_BYTES = 3 * 1024 * 1024 // 3MB — enforced client-side + server-side
+// Raster whitelist mirrors the API (assets.service.ts). SVG drawings are rasterized
+// to PNG before upload, so the doc never carries an <img src="data:image/svg…">.
+const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
 const AUTOSAVE_MS = 1000
+
+type EditorMode = 'write' | 'draw' | 'insert'
+
+const uid = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `u${Date.now()}${Math.random()}`
+
+/** A local (never synced) image-upload in flight or failed — drives the progress/error cards. */
+interface UploadItem {
+  id: string
+  status: 'uploading' | 'error'
+  progress: number // 0..1
+  name: string
+  message?: string // error text (status === 'error')
+  blob?: Blob // present ⇒ the upload is retriable
+  insertPos?: number // doc position captured at start
+}
 
 export interface CollabUser {
   name: string
@@ -61,6 +84,8 @@ export interface PresenceUser {
 export interface CollabEditorProps {
   /** File id — used as the Yjs document name (server maps it to File.ydoc). */
   fileId: string
+  /** Project id — scopes the image-upload endpoint (ProjectRoleGuard reads it). */
+  projectId: string
   /**
    * Access JWT for the WS handshake. Prefer an (optionally async) getter: Hocuspocus
    * calls it on every (re)connect, so a token refreshed elsewhere — or refreshed
@@ -87,7 +112,17 @@ export interface CollabEditorProps {
   /** Project roster for @mention autocomplete. Read live via a ref so the extension is
    *  created once and never remounts the editor when the list refreshes. */
   members?: MentionMember[]
+  /** Serialized <svg> of the inline drawing layer — emitted on stroke change so the parent
+   *  can inject it into the PDF export (ADR 0005 D5; drawings live outside getHTML). */
+  onDrawingsSvgChange?: (svg: string) => void
 }
+
+/** Draw-mode tools surfaced in the toolbar (SPEC งานที่ 2). */
+const DRAW_TOOLS: { key: DrawTool; titleKey: string; icon: keyof typeof Icon }[] = [
+  { key: 'pen', titleKey: 'editor.pen', icon: 'pencil' },
+  { key: 'highlighter', titleKey: 'editor.highlighter', icon: 'highlighter' },
+  { key: 'eraser', titleKey: 'editor.eraser', icon: 'eraser' },
+]
 
 type ToolButton = {
   key: string
@@ -121,13 +156,8 @@ const GROUPS: ToolButton[][] = [
     { key: 'center', title: 'กึ่งกลาง', icon: 'alignCenter', run: (e) => e.chain().focus().setTextAlign('center').run(), active: (e) => e.isActive({ textAlign: 'center' }) },
     { key: 'right', title: 'ชิดขวา', icon: 'alignRight', run: (e) => e.chain().focus().setTextAlign('right').run(), active: (e) => e.isActive({ textAlign: 'right' }) },
   ],
-  [
-    // Undo/redo go through the Yjs UndoManager (Collaboration extension), not StarterKit history.
-    // No `enabled` guard: Yjs UndoManager makes `can().undo()/redo()` unreliable
-    // (redo returns false spuriously). Buttons are always clickable; an empty stack no-ops.
-    { key: 'undo', title: 'ย้อนกลับ (Ctrl+Z)', icon: 'undo', run: (e) => e.chain().focus().undo().run() },
-    { key: 'redo', title: 'ทำซ้ำ (Ctrl+Y)', icon: 'redo', run: (e) => e.chain().focus().redo().run() },
-  ],
+  // Undo/redo used to live here; they now sit in the mode-row (shared across all modes)
+  // and are driven directly by the Yjs UndoManager (SPEC A2) — see doUndo/doRedo below.
 ]
 
 // SPEC 2 — Font pickers. Families are stored as inline `font-family`; the first entry
@@ -160,7 +190,7 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
 ]
 
 export function CollabEditor({
-  fileId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members,
+  fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
 }: CollabEditorProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
@@ -174,7 +204,22 @@ export function CollabEditor({
   // Re-render the toolbar on selection/content change so active state stays live.
   const [, forceTick] = useState(0)
   const [synced, setSynced] = useState(false)
-  const [drawOpen, setDrawOpen] = useState(false)
+  // Inline drawing tool state (SPEC งานที่ 2) — local UI, never synced. The strokes
+  // themselves live in a Y.Array (DrawingOverlay), synced + persisted with the doc.
+  const [drawTool, setDrawTool] = useState<DrawTool>('pen')
+  const [drawColor, setDrawColor] = useState(DRAW_COLORS[0])
+  const [drawSize, setDrawSize] = useState(DRAW_SIZES[2])
+  // Toolbar mode (SPEC B) — local UI state, never synced to peers. Always starts on "write".
+  const [mode, setMode] = useState<EditorMode>('write')
+  // In-flight / failed image uploads (SPEC A1) — local, never enter the Yjs CRDT.
+  const [uploads, setUploads] = useState<UploadItem[]>([])
+  // Abort controllers keyed by upload id, so an unmount cancels pending uploads.
+  const uploadAborters = useRef<Map<string, AbortController>>(new Map())
+  // Late-bound so editorProps.handlePaste/handleDrop (created at mount) can reach the
+  // latest uploader without re-creating the editor.
+  const startUploadRef = useRef<(blob: Blob, name: string, insertPos?: number) => void>()
+  // Roving-tabindex focus targets for the mode tablist (SPEC B a11y).
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   // Created exactly once per mount (per file, thanks to the parent's `key`).
   const [{ ydoc, provider }] = useState(() => {
@@ -189,11 +234,20 @@ export function CollabEditor({
     return { ydoc, provider }
   })
 
+  // Dedicated UndoManager for the inline drawing layer (ADR 0005 D4). Scoped to the
+  // `drawings` Y.Array and tracking only local ink edits (DRAW_ORIGIN), so undo/redo in
+  // draw mode reverts *my* last stroke and never a peer's — separate from the text
+  // (y-prosemirror) undo stack.
+  const [drawUndo] = useState(() =>
+    new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) }),
+  )
+
   // Tear down the socket + doc on unmount so switching files doesn't leak connections.
   useEffect(() => () => {
+    drawUndo.destroy()
     provider.destroy()
     ydoc.destroy()
-  }, [provider, ydoc])
+  }, [drawUndo, provider, ydoc])
 
   const extensions = useMemo(() => [
     // History off: the Collaboration extension provides Yjs-backed undo/redo instead.
@@ -239,6 +293,26 @@ export function CollabEditor({
         role: 'textbox',
         'aria-multiline': 'true',
         'aria-label': 'พื้นที่แก้ไขเอกสาร',
+      },
+      // Close the paste/drag base64 gap (SPEC A1 / ADR Decision 3): intercept image
+      // FILES from the clipboard/drop and route them through the upload pipeline so
+      // they become URLs, not base64 in the CRDT. Non-file pastes (incl. legacy
+      // <img data:> HTML) fall through to TipTap's default handling.
+      handlePaste: (view, event) => {
+        const image = Array.from(event.clipboardData?.files ?? []).find((f) => f.type.startsWith('image/'))
+        if (!image) return false
+        event.preventDefault()
+        startUploadRef.current?.(image, image.name || 'pasted-image', view.state.selection.from)
+        return true
+      },
+      handleDrop: (view, event) => {
+        const dt = (event as DragEvent).dataTransfer
+        const image = Array.from(dt?.files ?? []).find((f) => f.type.startsWith('image/'))
+        if (!image) return false
+        event.preventDefault()
+        const at = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY })
+        startUploadRef.current?.(image, image.name || 'dropped-image', at?.pos ?? view.state.selection.from)
+        return true
       },
     },
     onSelectionUpdate: () => forceTick((n) => n + 1),
@@ -324,18 +398,109 @@ export function CollabEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  /* ── Image upload state machine (SPEC A1) ───────────────────────────────────
+     Images are uploaded to Supabase Storage and only their URL enters the doc, so
+     the Yjs CRDT never carries base64 (ADR 0004). We deliberately do NOT insert a
+     ProseMirror placeholder node: a placeholder node would sync into the CRDT
+     immediately (every PM node does), so "no partial node on failure / tab-close"
+     can't hold for a real placeholder. Instead progress/errors render as local
+     cards (below the toolbar) and only the final image node — on success — is
+     inserted into the document. */
+  const validateImage = useCallback((blob: Blob): string | null => {
+    if (!ALLOWED_IMAGE_TYPES.includes(blob.type)) return 'รองรับเฉพาะรูปภาพ JPG, PNG, WEBP หรือ GIF'
+    if (blob.size > MAX_IMAGE_BYTES) return 'รูปภาพต้องไม่เกิน 3MB'
+    return null
+  }, [])
+
+  const dismissUpload = useCallback((id: string) => {
+    uploadAborters.current.get(id)?.abort()
+    uploadAborters.current.delete(id)
+    setUploads((u) => u.filter((it) => it.id !== id))
+  }, [])
+
+  const startUpload = useCallback((blob: Blob, name: string, insertPos?: number) => {
+    const invalid = validateImage(blob)
+    if (invalid) {
+      setUploads((u) => [...u, { id: uid(), status: 'error', progress: 0, name, message: invalid }])
+      return
+    }
+    const id = uid()
+    setUploads((u) => [...u, { id, status: 'uploading', progress: 0, name, blob, insertPos }])
+    const controller = new AbortController()
+    uploadAborters.current.set(id, controller)
+    FilesApi.uploadAsset(projectId, fileId, blob, {
+      filename: name,
+      signal: controller.signal,
+      onProgress: (f) => setUploads((u) => u.map((it) => (it.id === id ? { ...it, progress: f } : it))),
+    })
+      .then(({ url }) => {
+        uploadAborters.current.delete(id)
+        const ed = editorRef.current
+        if (ed && !ed.isDestroyed) {
+          const pos = insertPos != null ? Math.min(insertPos, ed.state.doc.content.size) : null
+          const chain = ed.chain().focus()
+          if (pos != null) chain.insertContentAt(pos, { type: 'image', attrs: { src: url } })
+          else chain.setImage({ src: url })
+          chain.run()
+        }
+        setUploads((u) => u.filter((it) => it.id !== id))
+      })
+      .catch((err) => {
+        uploadAborters.current.delete(id)
+        if (controller.signal.aborted) {
+          setUploads((u) => u.filter((it) => it.id !== id))
+          return
+        }
+        const msg = apiError(err).message ?? 'อัปโหลดไม่สำเร็จ'
+        setUploads((u) => u.map((it) => (it.id === id ? { ...it, status: 'error', message: msg } : it)))
+      })
+  }, [validateImage, projectId, fileId])
+
+  const retryUpload = useCallback((id: string) => {
+    const item = uploads.find((it) => it.id === id)
+    if (!item?.blob) return
+    setUploads((u) => u.filter((it) => it.id !== id))
+    startUpload(item.blob, item.name, item.insertPos)
+  }, [uploads, startUpload])
+
+  startUploadRef.current = startUpload
+
   const onImagePick = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file
-    if (!file || !editor) return
-    if (!file.type.startsWith('image/')) return
-    if (file.size > MAX_IMAGE_BYTES) { alert('รูปภาพต้องไม่เกิน 3MB'); return }
-    const reader = new FileReader()
-    reader.onload = () => {
-      editor.chain().focus().setImage({ src: reader.result as string }).run()
+    if (!file) return
+    startUpload(file, file.name)
+  }, [startUpload])
+
+  // Re-render the undo/redo buttons when the Yjs undo/redo stacks change (SPEC A2 #4).
+  // Covers both the text UndoManager (y-prosemirror) and the drawing UndoManager so the
+  // shared toolbar buttons reflect whichever stack the current mode drives.
+  useEffect(() => {
+    if (!editor) return
+    const tick = () => forceTick((n) => n + 1)
+    const managers = [yUndoPluginKey.getState(editor.state)?.undoManager, drawUndo].filter(Boolean) as Y.UndoManager[]
+    for (const m of managers) {
+      m.on('stack-item-added', tick)
+      m.on('stack-item-popped', tick)
+      m.on('stack-cleared', tick)
     }
-    reader.readAsDataURL(file)
-  }, [editor])
+    return () => {
+      for (const m of managers) {
+        m.off('stack-item-added', tick)
+        m.off('stack-item-popped', tick)
+        m.off('stack-cleared', tick)
+      }
+    }
+  }, [editor, drawUndo])
+
+  // Abort any in-flight uploads on unmount (no orphaned requests / setState-after-unmount).
+  useEffect(() => {
+    const aborters = uploadAborters.current
+    return () => {
+      aborters.forEach((c) => c.abort())
+      aborters.clear()
+    }
+  }, [])
 
   const insertBox = useCallback(() => {
     editor?.chain().focus().insertContent({
@@ -352,151 +517,379 @@ export function CollabEditor({
     editor?.chain().focus().toggleTaskList().run()
   }, [editor])
 
-  const insertDrawing = useCallback((svg: string) => {
-    editor?.chain().focus().setImage({ src: svgToDataUrl(svg) }).run()
-  }, [editor])
+  const clearDrawing = useCallback(() => {
+    const arr = ydoc.getArray('drawings')
+    if (arr.length > 0) ydoc.transact(() => arr.delete(0, arr.length), DRAW_ORIGIN)
+  }, [ydoc])
+
+  // In draw mode, Ctrl+Z / Ctrl+Y drive the *drawing* undo stack (the editor's own keymap
+  // targets text). Capture-phase so we win before ProseMirror sees the key.
+  useEffect(() => {
+    if (mode !== 'draw' || readOnly) return
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      const k = e.key.toLowerCase()
+      if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); drawUndo.undo() }
+      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); e.stopPropagation(); drawUndo.redo() }
+    }
+    document.addEventListener('keydown', onKey, true)
+    return () => document.removeEventListener('keydown', onKey, true)
+  }, [mode, readOnly, drawUndo])
 
   if (!editor) return null
+
+  /* ── Undo/redo driven straight off the Yjs UndoManager (SPEC A2) ────────────
+     Reading undoStack/redoStack length is reliable (unlike TipTap's can().undo()
+     under Collaboration, which returns false spuriously), so the buttons can be
+     correctly disabled instead of silently no-op'ing. Ctrl+Z / Ctrl+Y keep working
+     via the Collaboration extension's own keymap. */
+  // Undo/redo target follows the active mode: in draw mode they drive the drawing
+  // UndoManager (ADR 0005 D4); otherwise the text (y-prosemirror) stack.
+  const undoManager = yUndoPluginKey.getState(editor.state)?.undoManager
+  const drawingMode = mode === 'draw'
+  const canUndo = drawingMode ? drawUndo.undoStack.length > 0 : (undoManager?.undoStack.length ?? 0) > 0
+  const canRedo = drawingMode ? drawUndo.redoStack.length > 0 : (undoManager?.redoStack.length ?? 0) > 0
+  const doUndo = () => {
+    if (drawingMode) { drawUndo.undo(); return }
+    const e = editorRef.current
+    if (e) { yUndo(e.state); e.view.focus() }
+  }
+  const doRedo = () => {
+    if (drawingMode) { drawUndo.redo(); return }
+    const e = editorRef.current
+    if (e) { yRedo(e.state); e.view.focus() }
+  }
+
+  // Shared toolbar button base: soft hover transition + keyboard focus ring (a11y —
+  // buttons preventDefault on mousedown so the ring shows on Tab focus, not on click).
+  const btnBase =
+    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold transition-colors ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
+  const btnIdle = 'text-muted hover:bg-ink/5 hover:text-ink'
+  // One divider style everywhere so the toolbar rhythm stays even (DESIGN_SPEC).
+  const dividerCls = 'mx-1.5 h-5 w-px flex-shrink-0 bg-line'
+  // Native selects: match the button chrome + a calm focus ring instead of a hard outline.
+  const selectCls =
+    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] transition-colors ' +
+    'hover:border-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
+
+  const MODE_TABS: { key: EditorMode; label: string }[] = [
+    { key: 'write', label: t('editor.write') },
+    { key: 'draw', label: t('editor.draw') },
+    { key: 'insert', label: t('editor.insert') },
+  ]
+
+  const onTabKeyDown = (e: React.KeyboardEvent) => {
+    const order = MODE_TABS.map((m) => m.key)
+    const i = order.indexOf(mode)
+    let next = i
+    if (e.key === 'ArrowRight') next = (i + 1) % order.length
+    else if (e.key === 'ArrowLeft') next = (i - 1 + order.length) % order.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = order.length - 1
+    else return
+    e.preventDefault()
+    setMode(order[next])
+    tabRefs.current[next]?.focus()
+  }
 
   return (
     <div className="flex flex-col">
       {!readOnly && (
-        <div className="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-1 rounded-xl border border-line bg-card p-1.5 shadow-soft">
-          {/* SPEC 2 — Font family + size. stopPropagation (not preventDefault) on mousedown:
-              a native <select> needs to take focus to open, unlike the toolbar buttons. */}
-          <div className="flex items-center gap-1.5">
-            <select
-              value={editor.getAttributes('textStyle').fontFamily ?? ''}
-              onChange={(e) => {
-                if (e.target.value) editor.chain().focus().setFontFamily(e.target.value).run()
-                else editor.chain().focus().unsetFontFamily().run()
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              title="แบบอักษร"
-              className="h-8 rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
+        <div className="sticky top-0 z-10 mb-3 rounded-xl border border-line bg-card shadow-soft">
+          {/* Row 1 — mode switch (left) + undo/redo (shared across modes, right). Fixed
+              height so the toolbar never jumps when the contextual row swaps (SPEC B). */}
+          <div className="flex h-10 items-center gap-2 border-b border-line px-1.5">
+            <div
+              role="tablist"
+              aria-label={t('editor.modesLabel')}
+              onKeyDown={onTabKeyDown}
+              className="inline-flex items-center gap-0.5 rounded-lg bg-paper p-0.5"
             >
-              {FONT_FAMILIES.map((f) => (
-                <option key={f.value} value={f.value}>{f.label}</option>
-              ))}
-            </select>
-            <select
-              value={(editor.getAttributes('textStyle').fontSize ?? '').replace('px', '')}
-              onChange={(e) => {
-                if (e.target.value) editor.chain().focus().setFontSize(`${e.target.value}px`).run()
-                else editor.chain().focus().unsetFontSize().run()
-              }}
-              onMouseDown={(e) => e.stopPropagation()}
-              title="ขนาดอักษร"
-              className="h-8 w-[4.5rem] rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
-            >
-              <option value="">–</option>
-              {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <span className="mx-0.5 h-5 w-px bg-line" />
-          </div>
-
-          {GROUPS.map((group, gi) => (
-            <div key={gi} className="flex items-center gap-0.5">
-              {gi > 0 && <span className="mx-1 h-5 w-px bg-line" />}
-              {group.map((b) => {
-                const IconCmp = b.icon ? Icon[b.icon] : null
-                const active = b.active?.(editor) ?? false
-                const disabled = b.enabled ? !b.enabled(editor) : false
+              {MODE_TABS.map((m, i) => {
+                const active = mode === m.key
                 return (
                   <button
-                    key={b.key}
+                    key={m.key}
+                    ref={(el) => { tabRefs.current[i] = el }}
                     type="button"
-                    title={b.title}
-                    aria-label={b.title}
-                    aria-pressed={b.active ? active : undefined}
-                    disabled={disabled}
-                    // Don't let the button steal the editor selection.
+                    role="tab"
+                    id={`tab-${m.key}`}
+                    aria-selected={active}
+                    aria-controls={`toolbar-row-${m.key}`}
+                    tabIndex={active ? 0 : -1}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => b.run(editor)}
+                    onClick={() => setMode(m.key)}
                     className={cn(
-                      'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold',
-                      active ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-ink/5 hover:text-ink',
-                      disabled && 'opacity-40 hover:bg-transparent',
+                      'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-paper',
+                      active ? 'bg-card text-ink shadow-soft' : 'text-muted hover:bg-ink/5 hover:text-ink',
                     )}
                   >
-                    {IconCmp ? <IconCmp width={16} height={16} /> : b.text}
+                    {m.label}
                   </button>
                 )
               })}
             </div>
-          ))}
 
-          {/* Insert group: image / draw / box */}
-          <div className="flex items-center gap-0.5">
-            <span className="mx-1 h-5 w-px bg-line" />
-            <button
-              type="button" title="แทรกรูปภาพ"
-              onMouseDown={(e) => e.preventDefault()} onClick={() => fileRef.current?.click()}
-              className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
-            >
-              <Icon.image width={16} height={16} />
-            </button>
-            <button
-              type="button" title="วาดภาพ (รองรับ stylus)"
-              onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawOpen(true)}
-              className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
-            >
-              <Icon.pencil width={16} height={16} />
-            </button>
-            <button
-              type="button" title="แทรกกล่องข้อความ (Box)"
-              onMouseDown={(e) => e.preventDefault()} onClick={insertBox}
-              className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
-            >
-              <Icon.box width={16} height={16} />
-            </button>
-            <button
-              type="button"
-              title="ลบกล่องข้อความ"
-              disabled={!editor.isActive('box')}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                const { $from } = editor.state.selection
-                for (let d = $from.depth; d > 0; d--) {
-                  if ($from.node(d).type.name === 'box') {
-                    const start = $from.before(d)
-                    const end = $from.after(d)
-                    editor.chain().focus().deleteRange({ from: start, to: end }).run()
-                    break
-                  }
-                }
-              }}
-              className={cn(
-                'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink',
-                !editor.isActive('box') && 'opacity-40 hover:bg-transparent',
-              )}
-            >
-              <Icon.trash width={16} height={16} />
-            </button>
-            <button
-              type="button" title="แทรกตาราง"
-              onMouseDown={(e) => e.preventDefault()} onClick={insertTable}
-              className="grid h-8 min-w-8 place-items-center rounded-lg px-2 text-muted hover:bg-ink/5 hover:text-ink"
-            >
-              <Icon.table width={16} height={16} />
-            </button>
-            <button
-              type="button" title={t('tasklist.insert')} aria-label={t('tasklist.insert')}
-              aria-pressed={editor.isActive('taskList')}
-              onMouseDown={(e) => e.preventDefault()} onClick={toggleChecklist}
-              className={cn(
-                'grid h-8 min-w-8 place-items-center rounded-lg px-2',
-                editor.isActive('taskList') ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-ink/5 hover:text-ink',
-              )}
-            >
-              <Icon.checklist width={16} height={16} />
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button" title="ย้อนกลับ (Ctrl+Z)" aria-label="ย้อนกลับ"
+                  disabled={!canUndo}
+                  onMouseDown={(e) => e.preventDefault()} onClick={doUndo}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canUndo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                >
+                  <Icon.undo width={16} height={16} />
+                </button>
+                <button
+                  type="button" title="ทำซ้ำ (Ctrl+Y)" aria-label="ทำซ้ำ"
+                  disabled={!canRedo}
+                  onMouseDown={(e) => e.preventDefault()} onClick={doRedo}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canRedo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                >
+                  <Icon.redo width={16} height={16} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2 — contextual controls for the current mode. Fixed height + horizontal
+              scroll so fewer buttons never reflow the bar (SPEC B / DESIGN_SPEC §29). */}
+          <div className="flex h-11 items-center gap-0.5 overflow-x-auto px-1.5">
+            {mode === 'write' && (
+              <div id="toolbar-row-write" role="tabpanel" aria-labelledby="tab-write" className="flex items-center gap-0.5">
+                {/* SPEC 2 — Font family + size. stopPropagation (not preventDefault) on mousedown:
+                    a native <select> needs to take focus to open, unlike the toolbar buttons. */}
+                <select
+                  value={editor.getAttributes('textStyle').fontFamily ?? ''}
+                  onChange={(e) => {
+                    if (e.target.value) editor.chain().focus().setFontFamily(e.target.value).run()
+                    else editor.chain().focus().unsetFontFamily().run()
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title="แบบอักษร"
+                  className={selectCls}
+                >
+                  {FONT_FAMILIES.map((f) => (
+                    <option key={f.value} value={f.value}>{f.label}</option>
+                  ))}
+                </select>
+                <select
+                  value={(editor.getAttributes('textStyle').fontSize ?? '').replace('px', '')}
+                  onChange={(e) => {
+                    if (e.target.value) editor.chain().focus().setFontSize(`${e.target.value}px`).run()
+                    else editor.chain().focus().unsetFontSize().run()
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  title="ขนาดอักษร"
+                  className={cn(selectCls, 'w-[4.5rem]')}
+                >
+                  <option value="">–</option>
+                  {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <span className={dividerCls} />
+
+                {GROUPS.map((group, gi) => (
+                  <div key={gi} className="flex flex-shrink-0 items-center gap-0.5">
+                    {gi > 0 && <span className={dividerCls} />}
+                    {group.map((b) => {
+                      const IconCmp = b.icon ? Icon[b.icon] : null
+                      const active = b.active?.(editor) ?? false
+                      return (
+                        <button
+                          key={b.key}
+                          type="button"
+                          title={b.title}
+                          aria-label={b.title}
+                          aria-pressed={b.active ? active : undefined}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => b.run(editor)}
+                          className={cn(btnBase, active ? 'bg-primary-soft text-primary' : btnIdle)}
+                        >
+                          {IconCmp ? <IconCmp width={16} height={16} /> : b.text}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ))}
+
+                <span className={dividerCls} />
+                <button
+                  type="button" title="แทรกตาราง" aria-label="แทรกตาราง"
+                  onMouseDown={(e) => e.preventDefault()} onClick={insertTable}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle)}
+                >
+                  <Icon.table width={16} height={16} />
+                </button>
+                <button
+                  type="button" title={t('tasklist.insert')} aria-label={t('tasklist.insert')}
+                  aria-pressed={editor.isActive('taskList')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={toggleChecklist}
+                  className={cn(btnBase, 'flex-shrink-0', editor.isActive('taskList') ? 'bg-primary-soft text-primary' : btnIdle)}
+                >
+                  <Icon.checklist width={16} height={16} />
+                </button>
+              </div>
+            )}
+
+            {mode === 'draw' && (
+              <div id="toolbar-row-draw" role="tabpanel" aria-labelledby="tab-draw" className="flex items-center gap-0.5">
+                {/* Tools: pen / highlighter / eraser */}
+                {DRAW_TOOLS.map((tl) => {
+                  const IconCmp = Icon[tl.icon]
+                  const activeTool = drawTool === tl.key
+                  return (
+                    <button
+                      key={tl.key}
+                      type="button" title={t(tl.titleKey)} aria-label={t(tl.titleKey)}
+                      aria-pressed={activeTool}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawTool(tl.key)}
+                      className={cn(btnBase, 'flex-shrink-0', activeTool ? 'bg-primary-soft text-primary' : btnIdle)}
+                    >
+                      <IconCmp width={16} height={16} />
+                    </button>
+                  )
+                })}
+                <span className={dividerCls} />
+
+                {/* Ink colors + free picker */}
+                <div className="flex flex-shrink-0 items-center gap-1">
+                  {DRAW_COLORS.map((c) => (
+                    <button
+                      key={c} type="button" aria-label={`${t('editor.penColor')} ${c}`}
+                      aria-pressed={drawColor === c}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawColor(c)}
+                      className={cn(
+                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition',
+                        c === '#ffffff' && 'border border-line',
+                        drawColor === c && 'ring-2 ring-primary',
+                      )}
+                      style={{ background: c }}
+                    />
+                  ))}
+                  <label
+                    className="grid size-6 flex-shrink-0 cursor-pointer place-items-center rounded-full border border-line"
+                    title={t('editor.penColor')} style={{ background: drawColor }}
+                  >
+                    <input
+                      type="color" value={drawColor} onChange={(e) => setDrawColor(e.target.value)}
+                      className="size-0 opacity-0" aria-label={t('editor.penColor')}
+                    />
+                  </label>
+                </div>
+                <span className={dividerCls} />
+
+                {/* Brush sizes */}
+                <div className="flex flex-shrink-0 items-center gap-0.5" role="group" aria-label={t('editor.brushSize')}>
+                  {DRAW_SIZES.map((s) => (
+                    <button
+                      key={s} type="button" title={`${t('editor.brushSize')} ${s}`} aria-label={`${t('editor.brushSize')} ${s}`}
+                      aria-pressed={drawSize === s}
+                      onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawSize(s)}
+                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
+                    >
+                      <span className="rounded-full bg-ink" style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
+                    </button>
+                  ))}
+                </div>
+                <span className={dividerCls} />
+
+                <button
+                  type="button" title={t('editor.clearDrawing')} aria-label={t('editor.clearDrawing')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={clearDrawing}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle)}
+                >
+                  <Icon.trash width={16} height={16} />
+                </button>
+                <span className="ml-1 flex-shrink-0 text-[12px] text-muted">{t('editor.stylusHint')}</span>
+              </div>
+            )}
+
+            {mode === 'insert' && (
+              <div id="toolbar-row-insert" role="tabpanel" aria-labelledby="tab-insert" className="flex items-center gap-0.5">
+                <button
+                  type="button" title={t('editor.insertImage')} aria-label={t('editor.insertImage')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={() => fileRef.current?.click()}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle)}
+                >
+                  <Icon.image width={16} height={16} />
+                </button>
+                <span className={dividerCls} />
+                <button
+                  type="button" title={t('editor.insertBox')} aria-label={t('editor.insertBox')}
+                  onMouseDown={(e) => e.preventDefault()} onClick={insertBox}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle)}
+                >
+                  <Icon.box width={16} height={16} />
+                </button>
+                <button
+                  type="button" title={t('editor.deleteBox')} aria-label={t('editor.deleteBox')}
+                  disabled={!editor.isActive('box')}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    const { $from } = editor.state.selection
+                    for (let d = $from.depth; d > 0; d--) {
+                      if ($from.node(d).type.name === 'box') {
+                        editor.chain().focus().deleteRange({ from: $from.before(d), to: $from.after(d) }).run()
+                        break
+                      }
+                    }
+                  }}
+                  className={cn(btnBase, 'flex-shrink-0', btnIdle, !editor.isActive('box') && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                >
+                  <Icon.trash width={16} height={16} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={onImagePick} />
-      <DrawingCanvas open={drawOpen} onClose={() => setDrawOpen(false)} onInsert={insertDrawing} />
+      {/* Image upload progress / error cards (SPEC A1). Local only — never in the CRDT. */}
+      {!readOnly && uploads.length > 0 && (
+        <div className="mb-3 flex flex-col gap-2">
+          {uploads.map((u) =>
+            u.status === 'uploading' ? (
+              <div
+                key={u.id}
+                className="flex max-w-[320px] items-center gap-3 rounded-lg border border-line bg-paper p-3 text-[13px] text-muted"
+                role="status"
+              >
+                <svg className="animate-spin flex-shrink-0" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                  <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate">{t('editor.uploading')}</div>
+                  <div className="mt-1 h-1 overflow-hidden rounded-full bg-line">
+                    <div className="h-full rounded-full bg-primary transition-[width] duration-200" style={{ width: `${Math.round(u.progress * 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div
+                key={u.id}
+                className="flex max-w-[360px] items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-[13px] text-danger"
+                role="alert"
+              >
+                <Icon.warning width={16} height={16} />
+                <span className="min-w-0 flex-1 truncate">{u.message ?? t('editor.uploadFailed')}</span>
+                {u.blob && (
+                  <button type="button" onClick={() => retryUpload(u.id)} className="flex-shrink-0 font-medium underline hover:no-underline">
+                    {t('editor.retry')}
+                  </button>
+                )}
+                <button type="button" onClick={() => dismissUpload(u.id)} className="flex-shrink-0 text-muted hover:text-ink">
+                  {t('editor.dismiss')}
+                </button>
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
+      <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden onChange={onImagePick} />
 
       {/* SPEC 4 — Table controls, shown only while the caret sits inside a table. */}
       {!readOnly && (
@@ -528,9 +921,21 @@ export function CollabEditor({
         </BubbleMenu>
       )}
 
-      {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin. */}
+      {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin.
+          The drawing overlay (ADR 0005) sits absolutely over this same box; .tb-page is
+          already position:relative. Pointer capture is on only in draw mode. */}
       <div className={cn('tb-page', orientation === 'landscape' ? 'tb-page--landscape' : 'tb-page--portrait')}>
         <EditorContent editor={editor} />
+        <DrawingOverlay
+          ydoc={ydoc}
+          active={mode === 'draw' && !readOnly}
+          readOnly={readOnly}
+          orientation={orientation}
+          tool={drawTool}
+          color={drawColor}
+          size={drawSize}
+          onStrokesChange={onDrawingsSvgChange}
+        />
       </div>
     </div>
   )

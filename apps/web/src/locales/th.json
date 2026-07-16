@@ -193,6 +193,28 @@
   "tasklist": {
     "insert": "แทรกเช็คลิสต์"
   },
+  "editor": {
+    "modesLabel": "โหมดแก้ไข",
+    "write": "เขียน",
+    "draw": "วาด",
+    "insert": "แทรก",
+    "openDraw": "เปิดพื้นที่วาด",
+    "stylusHint": "(รองรับ stylus)",
+    "pen": "ปากกา",
+    "highlighter": "ปากกาเน้นข้อความ",
+    "eraser": "ยางลบ",
+    "penColor": "สีปากกา",
+    "brushSize": "ขนาดเส้น",
+    "clearDrawing": "ล้างภาพวาดทั้งหมด",
+    "drawHint": "ลากปากกา/เมาส์เพื่อวาดบนหน้ากระดาษ — รองรับ stylus (ปรับความหนาตามแรงกด)",
+    "insertImage": "แทรกรูปภาพ",
+    "insertBox": "แทรกกล่องข้อความ",
+    "deleteBox": "ลบกล่องข้อความ",
+    "uploading": "กำลังอัปโหลดรูปภาพ…",
+    "uploadFailed": "อัปโหลดไม่สำเร็จ",
+    "retry": "ลองใหม่",
+    "dismiss": "ลบ"
+  },
   "mentions": {
     "listLabel": "สมาชิกที่แนะนำ",
     "empty": "ไม่พบสมาชิก"
