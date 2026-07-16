@@ -12,7 +12,7 @@
 //  - Legacy seed: pre-Phase-4 documents only have HTML (`File.content`). On the first
 //    successful sync, if the shared Yjs fragment is still empty we seed it once from
 //    `initialContent`. Guarded so it can never run twice (which would duplicate text).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useEditor, EditorContent, BubbleMenu, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
@@ -56,6 +56,8 @@ const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif
 const AUTOSAVE_MS = 1000
 
 type EditorMode = 'write' | 'draw' | 'insert'
+// Fixed tab order — drives both the sliding pill indicator and keyboard nav.
+const MODE_ORDER: EditorMode[] = ['write', 'draw', 'insert']
 
 const uid = () =>
   typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `u${Date.now()}${Math.random()}`
@@ -247,6 +249,9 @@ export function CollabEditor({
   const startUploadRef = useRef<(blob: Blob, name: string, insertPos?: number) => void>()
   // Roving-tabindex focus targets for the mode tablist (SPEC B a11y).
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  // Sliding pill indicator: measured box of the active tab, relative to the tablist.
+  const tablistRef = useRef<HTMLDivElement>(null)
+  const [pill, setPill] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
 
   // Created exactly once per mount (per file, thanks to the parent's `key`).
   const [{ ydoc, provider }] = useState(() => {
@@ -649,6 +654,24 @@ export function CollabEditor({
     }
   }, [commentDraft, commentText, onCreateComment])
 
+  // Keep the sliding pill locked onto the active tab. ResizeObserver covers the
+  // cases plain deps miss: async Thai/Latin font load and language switches that
+  // change label widths, plus container resize. Purely visual — no mode logic here.
+  useLayoutEffect(() => {
+    const list = tablistRef.current
+    if (readOnly || !list) return
+    const measure = () => {
+      const i = MODE_ORDER.indexOf(mode)
+      const el = tabRefs.current[i]
+      if (el) setPill({ left: el.offsetLeft, top: el.offsetTop, width: el.offsetWidth, height: el.offsetHeight })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(list)
+    tabRefs.current.forEach((b) => b && ro.observe(b))
+    return () => ro.disconnect()
+  }, [mode, readOnly])
+
   if (!editor) return null
 
   /* ── Undo/redo driven straight off the Yjs UndoManager (SPEC A2) ────────────
@@ -717,11 +740,29 @@ export function CollabEditor({
               height so the toolbar never jumps when the contextual row swaps (SPEC B). */}
           <div className="flex h-10 items-center gap-2 border-b border-line px-1.5">
             <div
+              ref={tablistRef}
               role="tablist"
               aria-label={t('editor.modesLabel')}
               onKeyDown={onTabKeyDown}
-              className="inline-flex items-center gap-0.5 rounded-lg bg-paper p-0.5"
+              className="relative inline-flex items-center rounded-lg bg-paper p-1"
             >
+              {/* Sliding pill — the single moving surface behind the active tab.
+                  Position/size come from the measured active tab; the transition on
+                  transform+width is what makes the switch glide. prefers-reduced-motion
+                  neutralizes it globally (index.css). Hidden until first measured. */}
+              <span
+                aria-hidden
+                className={cn(
+                  'pointer-events-none absolute left-0 top-0 rounded-md bg-card shadow-soft',
+                  'transition-[transform,width] duration-200 ease-out motion-reduce:transition-none',
+                  pill ? 'opacity-100' : 'opacity-0',
+                )}
+                style={pill ? {
+                  width: pill.width,
+                  height: pill.height,
+                  transform: `translate(${pill.left}px, ${pill.top}px)`,
+                } : undefined}
+              />
               {MODE_TABS.map((m, i) => {
                 const active = mode === m.key
                 return (
@@ -737,9 +778,11 @@ export function CollabEditor({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setMode(m.key)}
                     className={cn(
-                      'h-8 rounded-md px-3 text-body-sm font-medium transition duration-150 active:scale-[0.97]',
+                      'relative z-10 h-8 rounded-md px-3.5 text-body-sm font-medium transition-colors duration-150 active:scale-[0.97]',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-paper',
-                      active ? 'bg-card text-ink shadow-soft' : 'text-muted hover:bg-ink/5 hover:text-ink',
+                      // Active tab carries the theme accent (ties the control to each of the 12
+                      // themes); the neutral elevated pill sits behind it. Inactive stays quiet.
+                      active ? 'text-primary' : 'text-muted hover:text-ink',
                     )}
                   >
                     {m.label}
