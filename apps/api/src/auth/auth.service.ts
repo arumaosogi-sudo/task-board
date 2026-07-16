@@ -22,6 +22,16 @@ const BCRYPT_ROUNDS = 12
 const EMAIL_VERIFY_TTL_MS = 24 * 60 * 60 * 1000 // 24h
 const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000 // 1h
 
+/**
+ * A valid but throwaway bcrypt hash (cost 12) of a random string. On the login
+ * miss path (unknown user / Google-only account with no password), we still run
+ * a `bcrypt.compare` against this so the response takes the same ~bcrypt time as
+ * a real password check. Without it, a missing account returns markedly faster
+ * than a wrong password — a timing oracle that enumerates valid accounts.
+ * The value is fixed so it never matches any real password.
+ */
+const DUMMY_BCRYPT_HASH = '$2b$12$pBmbtxxtMd3vlQpGcy9OA.yyEd6tVtfnlkTRqPRj3LdqlKrpeVclq'
+
 export interface PublicUser {
   id: string
   username: string
@@ -75,8 +85,12 @@ export class AuthService {
     })
   }
 
-  /** Issues an access JWT + a fresh opaque refresh token (stored hashed). */
-  private async issueTokens(user: TokenUser): Promise<IssuedTokens> {
+  /**
+   * Issues an access JWT + a fresh opaque refresh token (stored hashed).
+   * Pass `familyId` to keep a rotated token in its existing family; omit it on a
+   * fresh login so Prisma mints a new family id (@default(cuid)).
+   */
+  private async issueTokens(user: TokenUser, familyId?: string): Promise<IssuedTokens> {
     const accessToken = await this.signAccessToken(user)
     const refreshToken = generateOpaqueToken()
     await this.prisma.refreshToken.create({
@@ -84,6 +98,7 @@ export class AuthService {
         userId: user.id,
         token: hashToken(refreshToken),
         expiresAt: new Date(Date.now() + this.refreshTtlMs),
+        ...(familyId ? { familyId } : {}),
       },
     })
     return { accessToken, refreshToken }
@@ -200,6 +215,9 @@ export class AuthService {
     const user = await this.users.findByIdentity(identity)
     // Constant-ish failure path: same generic error whether user missing or pw wrong.
     if (!user || !user.passwordHash) {
+      // Burn the same ~bcrypt time as a real comparison so an attacker can't
+      // distinguish "no such account" from "wrong password" by response timing.
+      await bcrypt.compare(password, DUMMY_BCRYPT_HASH)
       throw new UnauthorizedException({ code: 'invalid-credentials', message: 'Username/Email หรือรหัสผ่านไม่ถูกต้อง' })
     }
     const ok = await bcrypt.compare(password, user.passwordHash)
@@ -215,8 +233,9 @@ export class AuthService {
 
   /* -------------------------------- refresh ------------------------------- */
 
-  /** Used by JwtRefreshGuard. Throws on missing/expired token. */
-  async validateRefreshToken(raw: string): Promise<{ user: User; tokenId: string }> {
+  /** Used by JwtRefreshGuard. Throws on missing/expired token, or on reuse of a
+   * consumed (rotated) token — in which case the whole token family is revoked. */
+  async validateRefreshToken(raw: string): Promise<{ user: User; tokenId: string; familyId: string }> {
     const record = await this.prisma.refreshToken.findUnique({
       where: { token: hashToken(raw) },
       include: { user: true },
@@ -224,13 +243,35 @@ export class AuthService {
     if (!record || record.expiresAt < new Date()) {
       throw new UnauthorizedException({ code: 'invalid-refresh-token', message: 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่' })
     }
-    return { user: record.user, tokenId: record.id }
+    // Theft detection: a token that was already rotated is being replayed. The
+    // legitimate client always holds the newest token, so this means the token
+    // leaked. Revoke every token in the family (kills both attacker and victim
+    // sessions — forces a fresh login) and alarm.
+    if (record.rotatedAt) {
+      await this.prisma.refreshToken.deleteMany({ where: { familyId: record.familyId } })
+      this.logger.warn(
+        `Refresh-token reuse detected for user ${record.userId} (family ${record.familyId}) — family revoked`,
+      )
+      throw new UnauthorizedException({
+        code: 'refresh-token-reuse',
+        message: 'ตรวจพบการใช้ session ซ้ำ ระบบได้ยกเลิกทุก session เพื่อความปลอดภัย กรุณาเข้าสู่ระบบใหม่',
+      })
+    }
+    return { user: record.user, tokenId: record.id, familyId: record.familyId }
   }
 
-  /** Rotates the refresh token: deletes the used one, issues a new pair. */
+  /**
+   * Rotates the refresh token. Instead of deleting the used token we stamp it
+   * `rotatedAt` and mint a replacement in the SAME family — keeping the consumed
+   * row is what lets `validateRefreshToken` detect a later replay of it (theft).
+   * The stamped row is inert for auth and is cleaned up when it expires or when
+   * the family is revoked (logout / password change / reuse alarm).
+   */
   async rotateRefresh(user: TokenUser, oldTokenId: string): Promise<IssuedTokens> {
-    await this.prisma.refreshToken.delete({ where: { id: oldTokenId } }).catch(() => undefined)
-    return this.issueTokens(user)
+    const old = await this.prisma.refreshToken
+      .update({ where: { id: oldTokenId }, data: { rotatedAt: new Date() } })
+      .catch(() => null)
+    return this.issueTokens(user, old?.familyId)
   }
 
   async logout(tokenId: string): Promise<void> {

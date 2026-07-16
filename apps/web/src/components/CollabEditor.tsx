@@ -40,6 +40,8 @@ import { FilesApi } from '../lib/files'
 import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
+import { CommentHighlight } from './editor/CommentHighlight'
+import { applyCommentMark, rangeToAnchor } from './editor/commentAnchor'
 import { migrateLegacyDrawings } from './editor/drawing'
 import { DrawingOverlay } from './editor/DrawingOverlay'
 import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
@@ -115,6 +117,20 @@ export interface CollabEditorProps {
   /** Serialized <svg> of the inline drawing layer — emitted on stroke change so the parent
    *  can inject it into the PDF export (ADR 0005 D5; drawings live outside getHTML). */
   onDrawingsSvgChange?: (svg: string) => void
+  /** Editor+ may attach comments (backend @MinRole(Editor) on POST) — gates the comment
+   *  affordance in the selection BubbleMenu. */
+  canComment?: boolean
+  /** Persist a new comment. Resolves with the created id so the highlight mark can be applied
+   *  to the exact source range. Returns null if creation failed (no mark is applied). */
+  onCreateComment?: (input: {
+    anchorFrom: unknown
+    anchorTo: unknown
+    anchorText: string
+    body: string
+  }) => Promise<{ id: string } | null>
+  /** A comment highlight was clicked in the document — ids of every thread covering that
+   *  point (overlaps included), topmost-first. Lets the shell open + focus the thread. */
+  onCommentActivate?: (commentIds: string[]) => void
 }
 
 /** Draw-mode tools surfaced in the toolbar (SPEC งานที่ 2). */
@@ -191,9 +207,14 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
 
 export function CollabEditor({
   fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
+  canComment, onCreateComment, onCommentActivate,
 }: CollabEditorProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
+  // Comment click-activation reads through a ref: editorProps is built once at mount, so the
+  // handler must not close over a stale callback.
+  const onCommentActivateRef = useRef(onCommentActivate)
+  onCommentActivateRef.current = onCommentActivate
   // Live roster for @mention — the suggestion reads through this ref so a member-list
   // refetch never forces the editor (and its Yjs binding) to remount.
   const membersRef = useRef<MentionMember[]>(members ?? [])
@@ -211,6 +232,12 @@ export function CollabEditor({
   const [drawSize, setDrawSize] = useState(DRAW_SIZES[2])
   // Toolbar mode (SPEC B) — local UI state, never synced to peers. Always starts on "write".
   const [mode, setMode] = useState<EditorMode>('write')
+  // Inline "new comment" composer (Sprint 4). The source range is captured when the comment
+  // affordance is clicked and held here, so typing in the popover can never drift the anchor.
+  const [commentDraft, setCommentDraft] = useState<{ from: number; to: number; x: number; y: number } | null>(null)
+  const [commentText, setCommentText] = useState('')
+  const [commentSaving, setCommentSaving] = useState(false)
+  const commentPopRef = useRef<HTMLDivElement>(null)
   // In-flight / failed image uploads (SPEC A1) — local, never enter the Yjs CRDT.
   const [uploads, setUploads] = useState<UploadItem[]>([])
   // Abort controllers keyed by upload id, so an unmount cancels pending uploads.
@@ -276,6 +303,9 @@ export function CollabEditor({
       HTMLAttributes: { class: 'tb-mention' },
       suggestion: buildMentionSuggestion(getMembers),
     }),
+    // Comment highlight (Sprint 4) — a mark, so it rides the Yjs CRDT and persists with the
+    // doc; the DB keeps the RelativePosition anchor as the durable record.
+    CommentHighlight,
     TextAlign.configure({ types: ['heading', 'paragraph'] }),
     Collaboration.configure({ document: ydoc }),
     CollaborationCursor.configure({
@@ -313,6 +343,20 @@ export function CollabEditor({
         const at = view.posAtCoords({ left: (event as DragEvent).clientX, top: (event as DragEvent).clientY })
         startUploadRef.current?.(image, image.name || 'dropped-image', at?.pos ?? view.state.selection.from)
         return true
+      },
+      // Click a comment highlight → surface its thread(s) in the panel. Never consumes the
+      // click (returns false) so caret placement / normal editing is unaffected.
+      handleClick: (view, pos) => {
+        const notify = onCommentActivateRef.current
+        if (!notify) return false
+        const $pos = view.state.doc.resolve(pos)
+        const type = view.state.schema.marks.commentHighlight
+        const ids = $pos
+          .marks()
+          .filter((m) => m.type === type && m.attrs.commentId)
+          .map((m) => m.attrs.commentId as string)
+        if (ids.length) notify([...new Set(ids)])
+        return false
       },
     },
     onSelectionUpdate: () => forceTick((n) => n + 1),
@@ -522,19 +566,88 @@ export function CollabEditor({
     if (arr.length > 0) ydoc.transact(() => arr.delete(0, arr.length), DRAW_ORIGIN)
   }, [ydoc])
 
-  // In draw mode, Ctrl+Z / Ctrl+Y drive the *drawing* undo stack (the editor's own keymap
-  // targets text). Capture-phase so we win before ProseMirror sees the key.
+  // Yjs' UndoManager constructor registers itself in `trackedOrigins` so that its own
+  // undo transactions get recorded as redo items (undo pushes the inverse onto redoStack
+  // only when the undo transaction's origin — the manager — is tracked). React StrictMode's
+  // dev double-mount tears the plugin's UndoManager down (whose destroy() does
+  // `trackedOrigins.delete(this)`) while the Y.Doc + manager singletons are reused on the
+  // remount — leaving a manager that still *applies* undo but never records a redo item, so
+  // the redo button/shortcut silently does nothing. (The headless undoRedo test only
+  // single-mounts, so it never reproduces this; production renders StrictMode once, so it's
+  // unaffected — but we keep this robust either way.) Re-assert the invariant the instant we
+  // act: cheap, idempotent, and a no-op when it's already tracked.
+  const ensureSelfTracks = useCallback((um?: Y.UndoManager | null) => {
+    if (um) um.trackedOrigins.add(um)
+  }, [])
+
+  // Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z. In draw mode we drive the *drawing* stack directly
+  // (capture-phase, so we win before ProseMirror's keymap); in write/insert mode we let the
+  // y-prosemirror keymap do the undo/redo but first guarantee the text manager self-tracks.
   useEffect(() => {
-    if (mode !== 'draw' || readOnly) return
+    if (readOnly) return
     const onKey = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey)) return
       const k = e.key.toLowerCase()
-      if (k === 'z' && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); drawUndo.undo() }
-      else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); e.stopPropagation(); drawUndo.redo() }
+      const isUndo = k === 'z' && !e.shiftKey
+      const isRedo = k === 'y' || (k === 'z' && e.shiftKey)
+      if (!isUndo && !isRedo) return
+      if (mode === 'draw') {
+        e.preventDefault(); e.stopPropagation()
+        ensureSelfTracks(drawUndo)
+        if (isUndo) drawUndo.undo(); else drawUndo.redo()
+      } else {
+        ensureSelfTracks(yUndoPluginKey.getState(editorRef.current!.state)?.undoManager)
+      }
     }
     document.addEventListener('keydown', onKey, true)
     return () => document.removeEventListener('keydown', onKey, true)
-  }, [mode, readOnly, drawUndo])
+  }, [mode, readOnly, drawUndo, ensureSelfTracks])
+
+  // Dismiss the new-comment popover on Escape or an outside click.
+  useEffect(() => {
+    if (!commentDraft) return
+    const close = () => { setCommentDraft(null); setCommentText('') }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const onDown = (e: MouseEvent) => {
+      if (commentPopRef.current && !commentPopRef.current.contains(e.target as Node)) close()
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('mousedown', onDown)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('mousedown', onDown)
+    }
+  }, [commentDraft])
+
+  // Open the composer anchored to the current non-empty selection.
+  const openCommentDraft = useCallback(() => {
+    const ed = editorRef.current
+    if (!ed) return
+    const { from, to } = ed.state.selection
+    if (from === to) return
+    const coords = ed.view.coordsAtPos(to)
+    setCommentText('')
+    setCommentDraft({ from, to, x: coords.left, y: coords.bottom })
+  }, [])
+
+  // Persist the comment, then paint the highlight over the captured source range.
+  const submitComment = useCallback(async () => {
+    const ed = editorRef.current
+    const draft = commentDraft
+    const body = commentText.trim()
+    if (!ed || !draft || !body || !onCreateComment) return
+    const anchor = rangeToAnchor(ed, draft.from, draft.to)
+    if (!anchor) { setCommentDraft(null); return }
+    setCommentSaving(true)
+    try {
+      const created = await onCreateComment({ ...anchor, body })
+      if (created) applyCommentMark(ed, draft.from, draft.to, created.id)
+      setCommentDraft(null)
+      setCommentText('')
+    } finally {
+      setCommentSaving(false)
+    }
+  }, [commentDraft, commentText, onCreateComment])
 
   if (!editor) return null
 
@@ -550,27 +663,30 @@ export function CollabEditor({
   const canUndo = drawingMode ? drawUndo.undoStack.length > 0 : (undoManager?.undoStack.length ?? 0) > 0
   const canRedo = drawingMode ? drawUndo.redoStack.length > 0 : (undoManager?.redoStack.length ?? 0) > 0
   const doUndo = () => {
-    if (drawingMode) { drawUndo.undo(); return }
+    if (drawingMode) { ensureSelfTracks(drawUndo); drawUndo.undo(); return }
     const e = editorRef.current
-    if (e) { yUndo(e.state); e.view.focus() }
+    if (e) { ensureSelfTracks(yUndoPluginKey.getState(e.state)?.undoManager); yUndo(e.state); e.view.focus() }
   }
   const doRedo = () => {
-    if (drawingMode) { drawUndo.redo(); return }
+    if (drawingMode) { ensureSelfTracks(drawUndo); drawUndo.redo(); return }
     const e = editorRef.current
-    if (e) { yRedo(e.state); e.view.focus() }
+    if (e) { ensureSelfTracks(yUndoPluginKey.getState(e.state)?.undoManager); yRedo(e.state); e.view.focus() }
   }
 
-  // Shared toolbar button base: soft hover transition + keyboard focus ring (a11y —
-  // buttons preventDefault on mousedown so the ring shows on Tab focus, not on click).
+  // Shared toolbar button base: soft hover transition + tactile press (active:scale) +
+  // keyboard focus ring (a11y — buttons preventDefault on mousedown so the ring shows on
+  // Tab focus, not on click). transition covers color+transform so the press reads; under
+  // prefers-reduced-motion the global reset zeroes the duration, so it just snaps.
   const btnBase =
-    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold transition-colors ' +
+    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-body-sm font-semibold ' +
+    'transition duration-150 active:scale-95 ' +
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
   const btnIdle = 'text-muted hover:bg-ink/5 hover:text-ink'
   // One divider style everywhere so the toolbar rhythm stays even (DESIGN_SPEC).
   const dividerCls = 'mx-1.5 h-5 w-px flex-shrink-0 bg-line'
   // Native selects: match the button chrome + a calm focus ring instead of a hard outline.
   const selectCls =
-    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] transition-colors ' +
+    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-body-sm transition duration-150 ' +
     'hover:border-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
 
   const MODE_TABS: { key: EditorMode; label: string }[] = [
@@ -621,7 +737,7 @@ export function CollabEditor({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setMode(m.key)}
                     className={cn(
-                      'h-8 rounded-md px-3 text-[13px] font-medium transition-colors',
+                      'h-8 rounded-md px-3 text-body-sm font-medium transition duration-150 active:scale-[0.97]',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-paper',
                       active ? 'bg-card text-ink shadow-soft' : 'text-muted hover:bg-ink/5 hover:text-ink',
                     )}
@@ -638,7 +754,7 @@ export function CollabEditor({
                   type="button" title="ย้อนกลับ (Ctrl+Z)" aria-label="ย้อนกลับ"
                   disabled={!canUndo}
                   onMouseDown={(e) => e.preventDefault()} onClick={doUndo}
-                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canUndo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg transition duration-150 active:scale-95', btnIdle, !canUndo && 'opacity-40 hover:bg-transparent hover:text-muted active:scale-100')}
                 >
                   <Icon.undo width={16} height={16} />
                 </button>
@@ -646,7 +762,7 @@ export function CollabEditor({
                   type="button" title="ทำซ้ำ (Ctrl+Y)" aria-label="ทำซ้ำ"
                   disabled={!canRedo}
                   onMouseDown={(e) => e.preventDefault()} onClick={doRedo}
-                  className={cn('grid h-8 w-8 place-items-center rounded-lg', btnIdle, !canRedo && 'opacity-40 hover:bg-transparent hover:text-muted')}
+                  className={cn('grid h-8 w-8 place-items-center rounded-lg transition duration-150 active:scale-95', btnIdle, !canRedo && 'opacity-40 hover:bg-transparent hover:text-muted active:scale-100')}
                 >
                   <Icon.redo width={16} height={16} />
                 </button>
@@ -761,9 +877,9 @@ export function CollabEditor({
                       aria-pressed={drawColor === c}
                       onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawColor(c)}
                       className={cn(
-                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition',
+                        'size-6 flex-shrink-0 rounded-full ring-offset-2 ring-offset-card transition duration-150 hover:scale-110 active:scale-95',
                         c === '#ffffff' && 'border border-line',
-                        drawColor === c && 'ring-2 ring-primary',
+                        drawColor === c ? 'ring-2 ring-primary shadow-soft' : 'hover:shadow-soft',
                       )}
                       style={{ background: c }}
                     />
@@ -787,9 +903,9 @@ export function CollabEditor({
                       key={s} type="button" title={`${t('editor.brushSize')} ${s}`} aria-label={`${t('editor.brushSize')} ${s}`}
                       aria-pressed={drawSize === s}
                       onMouseDown={(e) => e.preventDefault()} onClick={() => setDrawSize(s)}
-                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
+                      className={cn('grid size-8 flex-shrink-0 place-items-center rounded-lg transition duration-150 active:scale-90', drawSize === s ? 'bg-primary-soft' : 'hover:bg-ink/5')}
                     >
-                      <span className="rounded-full bg-ink" style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
+                      <span className={cn('rounded-full transition-colors', drawSize === s ? 'bg-primary' : 'bg-ink')} style={{ width: Math.min(s + 2, 16), height: Math.min(s + 2, 16) }} />
                     </button>
                   ))}
                 </div>
@@ -802,7 +918,7 @@ export function CollabEditor({
                 >
                   <Icon.trash width={16} height={16} />
                 </button>
-                <span className="ml-1 flex-shrink-0 text-[12px] text-muted">{t('editor.stylusHint')}</span>
+                <span className="ml-1 flex-shrink-0 text-caption text-muted">{t('editor.stylusHint')}</span>
               </div>
             )}
 
@@ -853,7 +969,7 @@ export function CollabEditor({
             u.status === 'uploading' ? (
               <div
                 key={u.id}
-                className="flex max-w-[320px] items-center gap-3 rounded-lg border border-line bg-paper p-3 text-[13px] text-muted"
+                className="flex max-w-[320px] animate-pop items-center gap-3 rounded-xl border border-line bg-card p-3 text-body-sm text-muted shadow-soft"
                 role="status"
               >
                 <svg className="animate-spin flex-shrink-0" width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -870,7 +986,7 @@ export function CollabEditor({
             ) : (
               <div
                 key={u.id}
-                className="flex max-w-[360px] items-center gap-2 rounded-lg border border-danger/30 bg-danger/5 p-3 text-[13px] text-danger"
+                className="flex max-w-[360px] animate-pop items-center gap-2 rounded-xl border border-danger/30 bg-danger/5 p-3 text-body-sm text-danger shadow-soft"
                 role="alert"
               >
                 <Icon.warning width={16} height={16} />
@@ -897,7 +1013,7 @@ export function CollabEditor({
           editor={editor}
           shouldShow={({ editor }) => editor.isActive('table')}
           tippyOptions={{ placement: 'top', duration: 100, zIndex: 20 }}
-          className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line bg-card p-1 shadow-soft"
+          className="flex flex-wrap items-center gap-0.5 rounded-xl border border-line bg-card p-1 shadow-pop"
         >
           {TABLE_ACTIONS.map((a) => {
             const disabled = a.can ? !a.can(editor) : false
@@ -910,8 +1026,8 @@ export function CollabEditor({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => a.run(editor)}
                 className={cn(
-                  'rounded px-1.5 py-1 text-[11px] font-medium text-muted hover:bg-ink/5 hover:text-ink',
-                  disabled && 'opacity-40 hover:bg-transparent',
+                  'rounded-md px-1.5 py-1 text-caption font-medium text-muted transition duration-150 hover:bg-ink/5 hover:text-ink active:scale-95',
+                  disabled && 'opacity-40 hover:bg-transparent active:scale-100',
                 )}
               >
                 {a.title}
@@ -919,6 +1035,75 @@ export function CollabEditor({
             )
           })}
         </BubbleMenu>
+      )}
+
+      {/* Comment affordance — appears on any non-empty text selection (Sprint 4). Distinct
+          pluginKey so it coexists with the table BubbleMenu above. Viewer+ by design (SRS
+          §2): commenting is allowed even when the document itself is read-only — do NOT
+          gate this on `!readOnly`, that would silently hide it for every Viewer. */}
+      {canComment && (
+        <BubbleMenu
+          editor={editor}
+          pluginKey="commentBubble"
+          shouldShow={({ editor, state }) =>
+            !editor.isActive('table') && !state.selection.empty && state.selection.from !== state.selection.to
+          }
+          tippyOptions={{ placement: 'top', duration: 100, zIndex: 20 }}
+          className="rounded-lg border border-line bg-card p-1 shadow-soft"
+        >
+          <button
+            type="button"
+            title={t('comments.addComment')}
+            aria-label={t('comments.addComment')}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openCommentDraft}
+            className="flex items-center gap-1.5 rounded px-2 py-1 text-[12px] font-medium text-muted hover:bg-ink/5 hover:text-ink"
+          >
+            <Icon.comment width={15} height={15} /> {t('comments.addComment')}
+          </button>
+        </BubbleMenu>
+      )}
+
+      {/* New-comment composer — fixed to the selection's end coords, anchored to the captured
+          range (not the live selection) so typing here cannot drift the highlight. */}
+      {commentDraft && (
+        <div
+          ref={commentPopRef}
+          className="fixed z-40 w-72 rounded-xl border border-line bg-card p-2.5 shadow-pop animate-pop"
+          style={{ left: Math.min(commentDraft.x, window.innerWidth - 300), top: commentDraft.y + 6 }}
+          role="dialog"
+          aria-label={t('comments.addComment')}
+        >
+          <textarea
+            autoFocus
+            value={commentText}
+            onChange={(e) => setCommentText(e.target.value)}
+            placeholder={t('comments.placeholder')}
+            rows={3}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (commentText.trim()) submitComment() }
+            }}
+            className="w-full resize-y rounded-lg border border-line bg-paper px-2.5 py-2 text-[13px] text-ink outline-none transition-colors placeholder:text-subtle focus:border-primary"
+          />
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => { setCommentDraft(null); setCommentText('') }}
+              className="rounded-lg px-2.5 py-1.5 text-[13px] font-medium text-muted hover:bg-ink/5"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={submitComment}
+              disabled={!commentText.trim() || commentSaving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-fg transition-colors hover:bg-primary-hover disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {commentSaving && <span className="size-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />}
+              {t('comments.send')}
+            </button>
+          </div>
+        </div>
       )}
 
       {/* SPEC 1 — A4 page surface (portrait/landscape). Padding is the 1-inch page margin.

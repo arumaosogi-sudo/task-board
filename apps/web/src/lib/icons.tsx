@@ -44,6 +44,8 @@ export const Icon = {
   download: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16" /></svg>),
   trash: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></svg>),
   invite: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="9" cy="8" r="3.5" /><path d="M3 20a6 6 0 0 1 12 0M18 8v6M15 11h6" /></svg>),
+  comment: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M21 12a8 8 0 0 1-8 8H7l-4 3v-9a8 8 0 0 1 8-8h2a8 8 0 0 1 8 6Z" /></svg>),
+  reply: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M9 17 4 12l5-5" /><path d="M4 12h11a5 5 0 0 1 5 5v1" /></svg>),
   logout: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" /></svg>),
   warning: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M12 3 2 20h20L12 3Z" /><path d="M12 10v4M12 17h.01" /></svg>),
   arrowLeft: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M19 12H5M12 19l-7-7 7-7" /></svg>),

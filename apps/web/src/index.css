@@ -144,16 +144,20 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-box[data-selected='true'] { @apply ring-2 ring-primary/60; }
 .tb-box-drag {
   @apply absolute -left-2 -top-2 grid h-6 w-6 place-items-center rounded-md
-         bg-card text-muted shadow-soft select-none;
+         bg-card text-muted shadow-soft select-none transition duration-150;
   cursor: grab;
   touch-action: none;
 }
-.tb-box-drag:active { cursor: grabbing; }
+.tb-box-drag:hover { @apply text-primary shadow-pop; }
+.tb-box-drag:active { cursor: grabbing; transform: scale(0.94); }
 .tb-box-resize {
-  @apply absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-primary;
+  @apply absolute -bottom-1.5 -right-1.5 h-3.5 w-3.5 rounded-full border-2 border-card bg-primary
+         shadow-soft transition duration-150;
   cursor: ew-resize;
   touch-action: none;
 }
+.tb-box-resize:hover { transform: scale(1.25); }
+.tb-box-resize:active { transform: scale(1.1); }
 
 /* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
    <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */
@@ -168,6 +172,31 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 
 /* @mention chip (Sprint 4). Inline atom; primary-soft ground keeps it on-brand in both modes. */
 .tb-prose .tb-mention { @apply rounded bg-primary-soft px-1 py-0.5 font-medium text-primary; }
+
+/* ---- Comment highlight mark (Sprint 4) ---- */
+/* Yellow "warn" token (not a new hex) so it reads as an annotation, distinct from the
+   blue text-selection and the purple mention chip. box-decoration-clone keeps the tint
+   whole across line wraps. Resolved threads dim to a faint wash. */
+.tb-prose .tb-comment {
+  background-color: rgb(var(--c-warn) / 0.22);
+  border-bottom: 2px solid rgb(var(--c-warn) / 0.55);
+  border-radius: 2px;
+  cursor: pointer;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.tb-prose .tb-comment[data-resolved='true'] {
+  background-color: rgb(var(--c-warn) / 0.08);
+  border-bottom-color: rgb(var(--c-warn) / 0.25);
+}
+.tb-prose .tb-comment--flash { animation: tb-comment-flash 1.1s ease-in-out; }
+@keyframes tb-comment-flash {
+  0%, 100% { background-color: rgb(var(--c-warn) / 0.22); }
+  30% { background-color: rgb(var(--c-warn) / 0.6); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tb-prose .tb-comment--flash { animation: none; }
+}
 
 /* ---- TipTap / ProseMirror editor surface (Phase 4.2) ---- */
 .tb-prose:focus { outline: none; }
@@ -232,18 +261,24 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-img-wrap img { max-width: 100%; border-radius: 8px; }
 /* Google Docs style: no border/outline on the selected image — the corner resize
    handle (rendered by the node view) is the only selection affordance. */
+/* Resize handle follows the active accent (was hard-locked to violet #7c5cff, which
+   looked off in the other five themes). border = card token so it reads on any page. */
 .tb-img-handle {
   position: absolute;
   right: -6px;
   bottom: -6px;
   width: 14px;
   height: 14px;
-  background: #7c5cff;
-  border: 2px solid #fff;
+  background: rgb(var(--c-primary));
+  border: 2px solid rgb(var(--c-card));
   border-radius: 50%;
+  box-shadow: 0 1px 2px rgb(29 35 51 / 0.18);
   cursor: nwse-resize;
   touch-action: none;
+  transition: transform 0.15s ease;
 }
+.tb-img-handle:hover { transform: scale(1.25); }
+.tb-img-handle:active { transform: scale(1.1); }
 
 /* ---- Live collaboration cursors (Phase 4.3, CollaborationCursor) ---- */
 /* Caret border + label background come from each peer's inline color (see presence.ts). */
