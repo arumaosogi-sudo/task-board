@@ -560,8 +560,18 @@ export function CollabEditor({
     if (e) { yRedo(e.state); e.view.focus() }
   }
 
-  const btnBase = 'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold'
+  // Shared toolbar button base: soft hover transition + keyboard focus ring (a11y —
+  // buttons preventDefault on mousedown so the ring shows on Tab focus, not on click).
+  const btnBase =
+    'grid h-8 min-w-8 place-items-center rounded-lg px-2 text-[13px] font-semibold transition-colors ' +
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
   const btnIdle = 'text-muted hover:bg-ink/5 hover:text-ink'
+  // One divider style everywhere so the toolbar rhythm stays even (DESIGN_SPEC).
+  const dividerCls = 'mx-1.5 h-5 w-px flex-shrink-0 bg-line'
+  // Native selects: match the button chrome + a calm focus ring instead of a hard outline.
+  const selectCls =
+    'h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] transition-colors ' +
+    'hover:border-ink/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-visible:ring-offset-card'
 
   const MODE_TABS: { key: EditorMode; label: string }[] = [
     { key: 'write', label: t('editor.write') },
@@ -659,7 +669,7 @@ export function CollabEditor({
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
                   title="แบบอักษร"
-                  className="h-8 flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
+                  className={selectCls}
                 >
                   {FONT_FAMILIES.map((f) => (
                     <option key={f.value} value={f.value}>{f.label}</option>
@@ -673,16 +683,16 @@ export function CollabEditor({
                   }}
                   onMouseDown={(e) => e.stopPropagation()}
                   title="ขนาดอักษร"
-                  className="h-8 w-[4.5rem] flex-shrink-0 rounded-lg border border-line bg-card px-2 text-[13px] focus:outline-none"
+                  className={cn(selectCls, 'w-[4.5rem]')}
                 >
                   <option value="">–</option>
                   {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                <span className="mx-0.5 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
 
                 {GROUPS.map((group, gi) => (
                   <div key={gi} className="flex flex-shrink-0 items-center gap-0.5">
-                    {gi > 0 && <span className="mx-1 h-5 w-px bg-line" />}
+                    {gi > 0 && <span className={dividerCls} />}
                     {group.map((b) => {
                       const IconCmp = b.icon ? Icon[b.icon] : null
                       const active = b.active?.(editor) ?? false
@@ -704,7 +714,7 @@ export function CollabEditor({
                   </div>
                 ))}
 
-                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
                 <button
                   type="button" title="แทรกตาราง" aria-label="แทรกตาราง"
                   onMouseDown={(e) => e.preventDefault()} onClick={insertTable}
@@ -741,7 +751,7 @@ export function CollabEditor({
                     </button>
                   )
                 })}
-                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
 
                 {/* Ink colors + free picker */}
                 <div className="flex flex-shrink-0 items-center gap-1">
@@ -768,7 +778,7 @@ export function CollabEditor({
                     />
                   </label>
                 </div>
-                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
 
                 {/* Brush sizes */}
                 <div className="flex flex-shrink-0 items-center gap-0.5" role="group" aria-label={t('editor.brushSize')}>
@@ -783,7 +793,7 @@ export function CollabEditor({
                     </button>
                   ))}
                 </div>
-                <span className="mx-1 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
 
                 <button
                   type="button" title={t('editor.clearDrawing')} aria-label={t('editor.clearDrawing')}
@@ -805,7 +815,7 @@ export function CollabEditor({
                 >
                   <Icon.image width={16} height={16} />
                 </button>
-                <span className="mx-0.5 h-5 w-px flex-shrink-0 bg-line" />
+                <span className={dividerCls} />
                 <button
                   type="button" title={t('editor.insertBox')} aria-label={t('editor.insertBox')}
                   onMouseDown={(e) => e.preventDefault()} onClick={insertBox}

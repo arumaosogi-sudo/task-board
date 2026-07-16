@@ -1,6 +1,6 @@
 # ADR 0005 — Inline Drawing Layer (overlay บนหน้า A4 แทน modal)
 
-- **สถานะ:** Accepted (design override จากเจ้าของ — อนุมัติ scope + version-diff limitation แล้ว 2026-07-16)
+- **สถานะ:** Proposed — เจ้าของอนุมัติ **scope** (วาด inline ทับ A4 + ยางลบวง) แล้ว 2026-07-16; **ยังไม่ ratify ข้อจำกัด version-diff** (ดู §ผลกระทบ ข้อ 1)
 - **วันที่:** 2026-07-16
 - **ผู้ตัดสิน:** senior-fullstack-dev
 - **บริบท input:** คำสั่งเจ้าของ (design override), `docs/SRS-editor-revamp.md` §B3, `docs/decisions/0004-editor-revamp.md` (ซึ่ง §3 สมมติ modal — ADR นี้ **override** ข้อนั้น)
@@ -102,9 +102,10 @@ schema); ยางลบ segment-level มี logic บริสุทธิ์ 
 
 **ลบ / ความเสี่ยงที่ QA ต้องตรวจ:**
 1. **Version history / diff ไม่เห็นภาพวาด** — `RevisionDiffDrawer` diff จาก HTML; drawings อยู่นอก
-   HTML → restore revision ไม่ย้อนภาพวาด. **✅ Owner ACCEPTED ข้อจำกัดนี้ (2026-07-16):** drawings
-   จะ **ไม่อยู่ใน version diff/restore** ใน scope นี้ (ยอมรับได้). ถ้าอนาคตต้องการ ต้อง mirror stroke
-   เข้า HTML snapshot ตอน store — แยกเป็นงานหลัง.
+   HTML → restore revision ไม่ย้อนภาพวาด. **⚠️ รอ owner ratify — ยังไม่ได้รับการยืนยัน:** ข้อจำกัดนี้
+   ถูกเสนอไว้ว่า drawings จะ **ไม่อยู่ใน version diff/restore** ใน scope นี้ แต่เจ้าของ**ยังไม่ได้ตัดสิน**
+   (PM แจ้ง dev ผิดพลาดว่าอนุมัติแล้วเมื่อ 2026-07-16 — แก้บันทึกให้ตรงความจริง 2026-07-16).
+   ถ้า owner ไม่ยอมรับ ต้อง mirror stroke เข้า HTML snapshot ตอน store — แยกเป็นงานหลัง.
 2. **PDF pagination** — ดู D5 คำเตือน.
 3. **Performance** — เอกสารมี stroke หลายพัน element ใน `Y.Array` → re-render SVG ทั้ง layer ทุก
    update. ต้อง memo ต่อ stroke + อาจ throttle. QA โหลดทดสอบ stroke จำนวนมาก.
