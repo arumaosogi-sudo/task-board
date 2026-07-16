@@ -33,11 +33,23 @@ async function bootstrap() {
   app.use(json({ limit: '10mb' }))
   app.use(urlencoded({ extended: true, limit: '10mb' }))
 
-  // Secure HTTP headers. The API serves JSON only (no HTML), so the strict CSP
-  // that would otherwise need per-page tuning is unnecessary; keep the rest.
+  // Secure HTTP headers. The API serves JSON only (never HTML/scripts/styles), so
+  // we lock the CSP all the way down to `default-src 'none'` — nothing is ever meant
+  // to load. It costs nothing for JSON responses yet adds a defense-in-depth layer:
+  // if an error page, docs route, or any future HTML surface is introduced, a browser
+  // rendering it cannot pull scripts/frames/forms from anywhere. `frame-ancestors`
+  // also blocks clickjacking (complements X-Frame-Options).
   app.use(
     helmet({
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: {
+        useDefaults: false,
+        directives: {
+          'default-src': ["'none'"],
+          'base-uri': ["'none'"],
+          'form-action': ["'none'"],
+          'frame-ancestors': ["'none'"],
+        },
+      },
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   )
