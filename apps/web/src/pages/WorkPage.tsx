@@ -196,6 +196,9 @@ export default function WorkPage() {
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const isOwner = project?.myRole === 'Owner'
+  // Commenting is Viewer+ by design (SRS §2) — any project member can comment/reply,
+  // only resolve/reopen requires canEdit (Editor+). Don't reuse canEdit here.
+  const canComment = !!project?.myRole
   const loadedDocId = useRef<string | null>(null)
 
   // Comments for the open document. Loaded whenever a doc is open (drives the header badge
@@ -549,7 +552,7 @@ export default function WorkPage() {
                         onReady={handleReady}
                         members={mentionMembers}
                         onDrawingsSvgChange={setDrawingsSvg}
-                        canComment={!!canEdit}
+                        canComment={canComment}
                         onCreateComment={handleCreateComment}
                         onCommentActivate={handleCommentActivate}
                       />
@@ -574,7 +577,7 @@ export default function WorkPage() {
             comments={comments}
             isLoading={commentsLoading}
             editor={editorApi}
-            canComment={!!canEdit}
+            canComment={canComment}
             canResolve={!!canEdit}
             isOwner={!!isOwner}
             currentUserId={user?.id}

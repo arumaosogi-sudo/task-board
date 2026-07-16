@@ -1038,8 +1038,10 @@ export function CollabEditor({
       )}
 
       {/* Comment affordance — appears on any non-empty text selection (Sprint 4). Distinct
-          pluginKey so it coexists with the table BubbleMenu above. Editor+ only. */}
-      {canComment && !readOnly && (
+          pluginKey so it coexists with the table BubbleMenu above. Viewer+ by design (SRS
+          §2): commenting is allowed even when the document itself is read-only — do NOT
+          gate this on `!readOnly`, that would silently hide it for every Viewer. */}
+      {canComment && (
         <BubbleMenu
           editor={editor}
           pluginKey="commentBubble"
