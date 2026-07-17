@@ -177,6 +177,7 @@
     "onlineNow": "People currently online",
     "versionHistory": "Version history",
     "export": "Export",
+    "activity": "Activity",
     "exportPdf": "Export PDF",
     "exportWord": "Export Word (.docx)",
     "exportMarkdown": "Export Markdown (.md)",
@@ -368,6 +369,11 @@
     "openFile": "Open file",
     "viewAllHistory": "View this file's full history",
     "loadError": "Couldn't load updates. Check your connection and try again."
+  },
+  "projectActivity": {
+    "title": "Activity",
+    "emptyTitle": "No activity yet",
+    "emptyBody": "When people edit documents in this project, their activity appears here."
   },
   "search": {
     "placeholder": "Search projects, files, or content…",
