@@ -235,6 +235,7 @@ export class ProjectsService {
     })
     if (!target) throw new NotFoundException({ code: 'member-not-found', message: 'ผู้รับโอนต้องเป็นสมาชิกของ Project' })
 
+    const now = new Date()
     await this.prisma.$transaction([
       this.prisma.membership.update({
         where: { projectId_userId: { projectId, userId: currentOwnerId } },
@@ -245,6 +246,13 @@ export class ProjectsService {
         data: { role: Role.Owner },
       }),
       this.prisma.project.update({ where: { id: projectId }, data: { ownerId: targetUserId } }),
+      // Auto-revoke every still-live public share link the outgoing Owner created for
+      // this project — in the SAME transaction, so there is no window where a link
+      // stays valid after its creator stops being Owner (ADR 0006 §7 #3 / SRS §6).
+      this.prisma.shareLink.updateMany({
+        where: { projectId, createdById: currentOwnerId, revokedAt: null },
+        data: { revokedAt: now },
+      }),
     ])
     return this.loadDetail(projectId, currentOwnerId)
   }

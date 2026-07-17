@@ -42,6 +42,9 @@ model User {
   // Sprint 4 — Comments
   comments         Comment[] @relation("CommentAuthor")
   resolvedComments Comment[] @relation("CommentResolver")
+
+  // Sprint 4 — Public share links (ADR 0006). Links created by this user.
+  shareLinks ShareLink[]
 }
 
 model UserSetting {
@@ -132,6 +135,7 @@ model Project {
   pins        ProjectPin[]
   files       File[]
   assets      FileAsset[]
+  shareLinks  ShareLink[]
 
   @@index([ownerId])
   @@index([deletedAt])
@@ -202,12 +206,13 @@ model File {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  parent    File?       @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children  File[]      @relation("FileTree")
-  revisions Revision[]
-  comments  Comment[]
-  assets    FileAsset[]
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent     File?       @relation("FileTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   File[]      @relation("FileTree")
+  revisions  Revision[]
+  comments   Comment[]
+  assets     FileAsset[]
+  shareLinks ShareLink[]
 
   @@index([projectId])
   @@index([parentId])
@@ -317,4 +322,33 @@ model Comment {
   @@index([fileId]) // list all comments for a file
   @@index([fileId, resolvedAt]) // filter all / unresolved / resolved fast
   @@index([parentId]) // load a thread's replies
+}
+
+// ─────────────────────── Sprint 4: Public share links (ADR 0006) ─────────────
+// A public, read-only snapshot of ONE document, reachable by anyone holding the
+// opaque link — no account required. This is the system's first anonymous trust
+// boundary, so the model is deliberately narrow: scoped to a single file, serving
+// only a manually-published HTML snapshot (never the live doc), with the token
+// stored as a SHA-256 hash (same pattern as Invitation / RefreshToken).
+model ShareLink {
+  id               String    @id @default(cuid())
+  fileId           String // scope 1:1 with a single file (guards against IDOR I-1)
+  projectId        String // denormalized so cascade-state checks stay one hop (mirrors FileAsset)
+  token            String    @unique // SHA-256 hash of the opaque token — never the plaintext
+  createdById      String // must be an Owner at creation time (audit + revoke authority)
+  publishedContent String?   @db.Text // sanitized HTML snapshot taken when the Owner last "published"; null = never published
+  publishedAt      DateTime? // timestamp of the last publish; paired with publishedContent
+  expiresAt        DateTime? // null = never expires (must be chosen deliberately in the UI)
+  revokedAt        DateTime? // soft revoke (manual or auto); kept for audit, never hard-deleted here
+  lastAccessedAt   DateTime? // privacy-preserving UX only ("opened last…"); no per-viewer PII
+  accessCount      Int       @default(0) // aggregate counter only — never stores viewer IPs
+  createdAt        DateTime  @default(now())
+
+  file      File    @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdById], references: [id])
+
+  @@index([fileId])
+  @@index([projectId])
+  @@index([createdById]) // auto-revoke query: WHERE createdById = ? AND projectId = ? AND revokedAt IS NULL
 }

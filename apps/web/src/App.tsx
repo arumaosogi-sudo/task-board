@@ -14,34 +14,46 @@ import Settings from './pages/Settings'
 import WorkPage from './pages/WorkPage'
 import Trash from './pages/Trash'
 import Activity from './pages/Activity'
+import PublicSharePage from './pages/PublicSharePage'
 
 // Phase 1: Auth Core · Phase 2: Projects. More protected routes added per phase.
 export default function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <Routes>
-          <Route path="/" element={<Login />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/signup" element={<SignUp />} />
-          <Route path="/forgot-password" element={<ForgotPassword />} />
-          <Route path="/reset-password" element={<ResetPassword />} />
-          <Route path="/verify-email" element={<EmailVerify />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route path="/accept-invite" element={<AcceptInvite />} />
-          <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
-          {/* Legacy feed routes consolidated into /activity (Sprint 3). Kept as
-              redirects so existing bookmarks / deep links don't 404. */}
-          <Route path="/my-updates" element={<Navigate to="/activity" replace />} />
-          <Route path="/project-changes" element={<Navigate to="/activity" replace />} />
-          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
-          <Route path="/projects/:id/work" element={<ProtectedRoute><WorkPage /></ProtectedRoute>} />
-          <Route path="/projects/:id/settings" element={<ProtectedRoute><ProjectSettings /></ProtectedRoute>} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AuthProvider>
+      <Routes>
+        {/* Public share viewer (ADR 0006): mounted OUTSIDE AuthProvider so the anonymous
+            page never bootstraps a session, sends the refresh cookie, or fetches any
+            authenticated data. Everything else stays inside AuthProvider. */}
+        <Route path="/share/:token" element={<PublicSharePage />} />
+        <Route
+          path="*"
+          element={
+            <AuthProvider>
+              <Routes>
+                <Route path="/" element={<Login />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<SignUp />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/verify-email" element={<EmailVerify />} />
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="/accept-invite" element={<AcceptInvite />} />
+                <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+                <Route path="/activity" element={<ProtectedRoute><Activity /></ProtectedRoute>} />
+                {/* Legacy feed routes consolidated into /activity (Sprint 3). Kept as
+                    redirects so existing bookmarks / deep links don't 404. */}
+                <Route path="/my-updates" element={<Navigate to="/activity" replace />} />
+                <Route path="/project-changes" element={<Navigate to="/activity" replace />} />
+                <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+                <Route path="/trash" element={<ProtectedRoute><Trash /></ProtectedRoute>} />
+                <Route path="/projects/:id/work" element={<ProtectedRoute><WorkPage /></ProtectedRoute>} />
+                <Route path="/projects/:id/settings" element={<ProtectedRoute><ProjectSettings /></ProtectedRoute>} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </AuthProvider>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   )
 }
