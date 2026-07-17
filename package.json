@@ -18,6 +18,9 @@
     "test:int:local": "node ops/scripts/test-int-local.mjs",
     "test:e2e:local": "node ops/scripts/test-e2e-local.mjs"
   },
+  "dependencies": {
+    "@nestjs/platform-express": "^11.1.28"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
