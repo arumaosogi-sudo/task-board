@@ -127,3 +127,37 @@ export interface SearchResults {
   files: SearchFileHit[]
   contents: SearchContentHit[]
 }
+
+/* --------------------- Public share links (Sprint 4, ADR 0006) --------------- */
+
+/**
+ * A share link as shown to the Owner in the management panel. Deliberately carries
+ * NO token (neither plaintext nor hash) — the raw token is only ever returned once,
+ * at creation, via CreateShareLinkResponse.
+ */
+export interface ShareLinkDto {
+  id: string
+  fileId: string
+  createdByUsername: string
+  publishedAt: string | null
+  expiresAt: string | null
+  revokedAt: string | null
+  lastAccessedAt: string | null
+  accessCount: number
+  createdAt: string
+}
+
+/** Returned exactly once, when a link is created. `token`/`url` are never re-served. */
+export interface CreateShareLinkResponse {
+  link: ShareLinkDto
+  token: string
+  url: string
+}
+
+/** The anonymous public read payload. No comments / revisions / members / owners. */
+export interface PublicShareContent {
+  fileName: string
+  /** Sanitized HTML snapshot. Image `src`s use the `tbasset:<assetId>` placeholder. */
+  contentHtml: string
+  publishedAt: string
+}

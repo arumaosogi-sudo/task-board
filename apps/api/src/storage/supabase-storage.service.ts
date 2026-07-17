@@ -77,4 +77,28 @@ export class SupabaseStorageService {
     }
     return { url: data.signedUrl }
   }
+
+  /**
+   * Download an object's bytes for the share asset-proxy (ADR 0006). Streaming the
+   * image through the API — instead of handing out a Supabase signed URL — keeps the
+   * bucket private and decouples image validity from the FileAsset's signed-URL TTL.
+   *
+   * Returns `null` (never throws) when the object is missing or storage is
+   * unreachable, so the public route can degrade to a 404 / broken-image rather than a
+   * 500 (NFR "Reliability"). Images are ≤3MB (upload cap), so buffering is acceptable.
+   */
+  async download(path: string): Promise<Buffer | null> {
+    if (!this.isConfigured()) return null
+    try {
+      const { data, error } = await this.getClient().storage.from(this.bucket).download(path)
+      if (error || !data) {
+        this.logger.warn(`Supabase download failed for ${path}: ${error?.message ?? 'no data'}`)
+        return null
+      }
+      return Buffer.from(await data.arrayBuffer())
+    } catch (err) {
+      this.logger.warn(`Supabase download threw for ${path}: ${(err as Error).message}`)
+      return null
+    }
+  }
 }
