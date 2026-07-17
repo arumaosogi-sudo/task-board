@@ -176,7 +176,12 @@
     "offline": "ออฟไลน์",
     "onlineNow": "ผู้ที่กำลังออนไลน์",
     "versionHistory": "ประวัติเวอร์ชัน",
+    "export": "ส่งออก",
+    "activity": "กิจกรรม",
     "exportPdf": "ส่งออก PDF",
+    "exportWord": "ส่งออก Word (.docx)",
+    "exportMarkdown": "ส่งออก Markdown (.md)",
+    "exportFailed": "ส่งออกไม่สำเร็จ ลองอีกครั้ง",
     "createFileTitle": "สร้างไฟล์ใหม่",
     "document": "เอกสาร",
     "folder": "โฟลเดอร์",
@@ -210,6 +215,18 @@
     "insertImage": "แทรกรูปภาพ",
     "insertBox": "แทรกกล่องข้อความ",
     "deleteBox": "ลบกล่องข้อความ",
+    "boxDrag": "ลากเพื่อย้ายกล่อง",
+    "boxCustomize": "ปรับแต่งกล่อง",
+    "boxColor": "สีกล่อง",
+    "boxColors": {
+      "default": "ค่าเริ่มต้น",
+      "slate": "เทา",
+      "red": "แดง",
+      "amber": "เหลืองอำพัน",
+      "green": "เขียว",
+      "blue": "น้ำเงิน",
+      "violet": "ม่วง"
+    },
     "uploading": "กำลังอัปโหลดรูปภาพ…",
     "uploadFailed": "อัปโหลดไม่สำเร็จ",
     "retry": "ลองใหม่",
@@ -300,12 +317,24 @@
     "profileAccount": "โปรไฟล์ & บัญชี",
     "ago": "{{time}}ที่แล้ว"
   },
+  "commit": {
+    "button": "Commit",
+    "title": "บันทึกเวอร์ชัน (Commit)",
+    "messageLabel": "ข้อความอธิบายการเปลี่ยนแปลง",
+    "placeholder": "เช่น แก้บทสรุป, เพิ่มตาราง…",
+    "hint": "ข้อความสั้น ๆ ช่วยให้จำได้ว่าเวอร์ชันนี้เปลี่ยนอะไร (ไม่บังคับ)",
+    "action": "Commit",
+    "done": "บันทึกเวอร์ชันแล้ว",
+    "failed": "บันทึกเวอร์ชันไม่สำเร็จ ลองใหม่อีกครั้ง"
+  },
   "history": {
     "title": "ประวัติเวอร์ชัน",
     "saveCurrentVersion": "บันทึกเวอร์ชันปัจจุบัน",
     "labelPlaceholder": "ป้ายกำกับ (ไม่บังคับ)",
     "saveVersion": "บันทึกเวอร์ชัน",
     "noLabel": "ไม่มีป้ายกำกับ",
+    "autoSnapshot": "บันทึกอัตโนมัติ",
+    "commitBadge": "Commit",
     "noVersions": "ยังไม่มีเวอร์ชันที่บันทึกไว้",
     "selectToCompare": "เลือกเวอร์ชันทางซ้ายเพื่อเทียบกับเอกสารปัจจุบัน",
     "comparing": "กำลังเปรียบเทียบ…",
@@ -340,6 +369,11 @@
     "openFile": "เปิดไฟล์",
     "viewAllHistory": "ดูประวัติทั้งหมดของไฟล์นี้",
     "loadError": "โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง"
+  },
+  "projectActivity": {
+    "title": "กิจกรรม",
+    "emptyTitle": "ยังไม่มีความเคลื่อนไหว",
+    "emptyBody": "เมื่อมีคนแก้ไขเอกสารใน project นี้ ความเคลื่อนไหวจะปรากฏที่นี่"
   },
   "search": {
     "placeholder": "ค้นหา project, ไฟล์ หรือเนื้อหา…",

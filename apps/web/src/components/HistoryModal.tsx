@@ -85,14 +85,29 @@ export function HistoryModal({
             {isLoading ? (
               <p className="px-2 py-4 text-[13px] text-muted">{t('common.loading')}</p>
             ) : revisions && revisions.length > 0 ? (
-              revisions.map((r) => (
-                <button key={r.id} onClick={() => { setSelectedId(r.id); setConfirmRestore(false) }}
-                  className={cn('flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-sm',
-                    r.id === selectedId ? 'bg-primary-soft text-primary' : 'hover:bg-ink/5')}>
-                  <span className="font-medium">{r.label || t('history.noLabel')}</span>
-                  <span className="text-[11px] text-subtle">{r.authorName} · {formatWhen(r.createdAt, i18n.language)}</span>
-                </button>
-              ))
+              revisions.map((r) => {
+                // A label marks an intentional "Commit" (manual save w/ message); the silent
+                // 5-min auto-snapshots carry no label. Distinguish them so the timeline reads
+                // as deliberate checkpoints vs. background safety-net saves.
+                const isCommit = !!r.label
+                return (
+                  <button key={r.id} onClick={() => { setSelectedId(r.id); setConfirmRestore(false) }}
+                    className={cn('flex w-full flex-col items-start gap-0.5 rounded-lg px-3 py-2 text-left text-sm',
+                      r.id === selectedId ? 'bg-primary-soft text-primary' : 'hover:bg-ink/5')}>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {isCommit ? (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                          <Icon.commit width={11} height={11} />{t('history.commitBadge')}
+                        </span>
+                      ) : (
+                        <Icon.clock width={12} height={12} className="shrink-0 text-subtle" />
+                      )}
+                      <span className="truncate font-medium">{r.label || t('history.autoSnapshot')}</span>
+                    </span>
+                    <span className="text-[11px] text-subtle">{r.authorName} · {formatWhen(r.createdAt, i18n.language)}</span>
+                  </button>
+                )
+              })
             ) : (
               <p className="px-2 py-4 text-[13px] text-muted">{t('history.noVersions')}</p>
             )}

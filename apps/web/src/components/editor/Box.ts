@@ -11,6 +11,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { BoxView } from './BoxView'
+import { validBoxBg, validBoxBorder } from './boxColors'
 
 export const Box = Node.create({
   name: 'box',
@@ -29,6 +30,20 @@ export const Box = Node.create({
           return m ? Math.round(parseFloat(m[1])) : null
         },
         renderHTML: (attrs) => (attrs.width ? { style: `width:${attrs.width}px` } : {}),
+      },
+      // Sprint 4 — box tint. Persisted as inline style (same contract as `width`) so it
+      // round-trips through File.content + PDF export. parseHTML validates against the
+      // preset palette (boxColors) — arbitrary/injected colors fall back to null (default).
+      // mergeAttributes concatenates each fragment's `style`, so width + bg + border coexist.
+      bgColor: {
+        default: null,
+        parseHTML: (el) => validBoxBg((el as HTMLElement).style?.backgroundColor),
+        renderHTML: (attrs) => (attrs.bgColor ? { style: `background-color:${attrs.bgColor}` } : {}),
+      },
+      borderColor: {
+        default: null,
+        parseHTML: (el) => validBoxBorder((el as HTMLElement).style?.borderColor),
+        renderHTML: (attrs) => (attrs.borderColor ? { style: `border-color:${attrs.borderColor}` } : {}),
       },
     }
   },
