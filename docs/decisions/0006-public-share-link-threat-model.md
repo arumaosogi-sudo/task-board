@@ -191,7 +191,9 @@ GET /public/share/:token              (NestJS REST, ไม่มี JwtGuard)
 Token & Data:
 - [ ] Token = `randomBytes(32)` (256-bit) base64url; เก็บเฉพาะ `sha256(token)` ใน DB; ไม่มี plaintext token ใน DB/log/response หลังสร้างครั้งแรก
 - [ ] Token อยู่ใน URL **path segment** ไม่ใช่ query string
-- [ ] `ShareLink` ผูก `fileId` เดียว (ไม่ใช่ project); response เสิร์ฟเฉพาะ `File.content` snapshot + ชื่อไฟล์ + updatedAt — ไม่มี comment/revision/member/asset-ownership
+- [ ] `ShareLink` ผูก `fileId` เดียว (ไม่ใช่ project); response เสิร์ฟเฉพาะ **`ShareLink.publishedContent`** (snapshot ณ เวลากด "เผยแพร่" — ไม่ใช่ `File.content` แบบ real-time ตามที่เจ้าของยืนยัน 2026-07-17) + ชื่อไฟล์ + `publishedAt` — ไม่มี comment/revision/member/asset-ownership
+- [ ] รูปภาพเสิร์ฟผ่าน asset-proxy ใหม่ (`GET /share/:token/assets/:assetId`) ที่ตรวจ share token เดียวกัน — ไม่ redirect ไป signed URL ของ Supabase ตรง ๆ (ตัดสินใจแล้ว)
+- [ ] `ShareLink.revokedAt` ถูกตั้งอัตโนมัติเมื่อ `createdById` ไม่ใช่ Owner ของ project นั้นอีกต่อไป (ตัดสินใจแล้ว)
 
 Guard & Authz:
 - [ ] `ShareLinkGuard` เป็นไฟล์แยก ไม่ import/extend `JwtGuard`/`ProjectRoleGuard`; อยู่ใน `apps/api/src/share/` (หรือ prefix `/public`)
@@ -214,17 +216,30 @@ UI:
 - [ ] หน้า `/share/:token` อยู่นอก `AppShell` และไม่ผ่าน `ProtectedRoute`; ไม่ fetch authenticated data ใด ๆ
 - [ ] สร้าง/เพิกถอนลิงก์ = Owner เท่านั้น; dialog สร้างมี warning "ใครมีลิงก์เข้าดูได้โดยไม่ต้องล็อกอิน" + แสดง scope
 
-### 🔓 Open questions ให้ architect ตัดสินก่อน SRS ละเอียด
-1. **Asset/รูปภาพ (I-4):** FileAsset ใช้ Supabase Storage แบบไหน (public URL vs signed URL)? ถ้า signed URL อายุสั้น จะไม่แมตช์ share link อายุยาว → ต้องมี asset-proxy route ที่ตรวจ share token เดียวกันหรือไม่ **(ต้องตอบก่อน dev เริ่ม)**
-2. **`File.content` freshness:** snapshot mirror อัปเดตทุก store cycle (2s) ของ collab อยู่แล้ว — ยืนยันว่า public เห็น "ล่าสุดพอ" หรือต้องมีปุ่ม "publish snapshot" แบบ manual (เปิดเฉพาะเวอร์ชันที่ owner ตั้งใจ — ปลอดภัยกว่าต่อ I-3)
-3. นโยบายเมื่อผู้สร้างลิงก์ถูกถอด Owner: revoke ลิงก์ที่เขาสร้างอัตโนมัติหรือไม่
+### ✅ Open questions — เจ้าของโปรเจกต์ตัดสินใจแล้ว (2026-07-17)
+
+1. **Asset/รูปภาพ (I-4) — ตัดสิน: ทำ asset-proxy ใหม่.** เพิ่ม endpoint เฉพาะสำหรับ public link
+   (เช่น `GET /share/:token/assets/:assetId`) ที่ตรวจ share token เดียวกันกับที่ยืนยัน `File.content`
+   แล้วสตรีมรูปจาก Supabase Storage ผ่าน backend (ไม่ redirect ไป signed URL ตรง ๆ) — รูปจึงไม่เสีย
+   แม้ signed URL เดิมของ `FileAsset` หมดอายุก่อนลิงก์ share; **ห้าม**เปิด bucket เป็น public ทั้งใบ
+2. **`File.content` freshness — ตัดสิน: กด "เผยแพร่" เอง (manual publish).** เพิ่ม field
+   `ShareLink.publishedContent` (snapshot HTML ณ เวลาที่ Owner กดเผยแพร่ล่าสุด) แทนการ mirror
+   `File.content` แบบ real-time — Owner ต้องกดปุ่มยืนยันทุกครั้งที่ต้องการอัปเดตสิ่งที่คนนอกเห็น
+   (ปลอดภัยสุดต่อ I-3: คนนอกไม่มีทางเห็นงานที่ยังแก้ไม่เสร็จ) UI ต้องมีตัวบ่งชี้ชัดเจนว่า
+   "เนื้อหาที่แชร์อยู่" ต่างจาก "เนื้อหาปัจจุบันในเอกสาร" เมื่อมีการแก้ไขหลัง publish ครั้งล่าสุด
+3. **นโยบายเมื่อผู้สร้างลิงก์ถูกถอด Owner — ตัดสิน: ยกเลิกอัตโนมัติ.** ผูก revoke เข้ากับ
+   lifecycle ของ `Membership` — เมื่อ `createdById` ของ `ShareLink` ไม่ใช่ Owner ของ `Project` อีกต่อไป
+   (ถูกลดสิทธิ์ หรือถูกเอาออกจาก project) ให้ตั้ง `revokedAt` ทันที (trigger จาก service เดียวกับที่
+   จัดการ role change/removal — ดู `projects.service.ts` `PATCH members/:userId` และ `DELETE members/:userId`
+   ที่มีอยู่แล้ว) ปลอดภัยสุด: ไม่มีลิงก์กำพร้าที่ไม่มีใครดูแลอยู่
 
 ---
 
 ## 8. ผลกระทบไฟล์ (อ้างอิงให้ dev — ยังไม่แตะโค้ด)
-- **Schema:** เพิ่ม `model ShareLink` + relation ใน `File`/`Project`/`User` → migration ใหม่
-- **Backend:** โมดูลใหม่ `apps/api/src/share/` (public read) + management route ใน `files`/`projects` (Owner-only สร้าง/เพิกถอน); **ห้ามแตะ** `collab.service.ts`, `project-role.guard.ts`
-- **Frontend:** route `/share/:token` นอก `AppShell` + viewer readonly (sanitized) + panel จัดการลิงก์ใน WorkPage
+- **Schema:** เพิ่ม `model ShareLink` (รวม `publishedContent: String @db.Text`, `publishedAt: DateTime?`) + relation ใน `File`/`Project`/`User` → migration ใหม่
+- **Backend:** โมดูลใหม่ `apps/api/src/share/` (public read + asset-proxy) + management route ใน `files`/`projects` (Owner-only สร้าง/เพิกถอน/เผยแพร่); **ห้ามแตะ** `collab.service.ts`, `project-role.guard.ts`
+- **Auto-revoke hook:** `projects.service.ts` — จุดที่จัดการ `PATCH members/:userId` (ลดสิทธิ์) และ `DELETE members/:userId` (ถอดออก) ต้อง revoke `ShareLink` ทุกอันที่ `createdById` ตรงกับ user นั้นถ้าเขาไม่ใช่ Owner ของ project นั้นแล้ว
+- **Frontend:** route `/share/:token` นอก `AppShell` + viewer readonly (sanitized) + panel จัดการลิงก์ใน WorkPage (สร้าง/เพิกถอน/**ปุ่ม "เผยแพร่"** ที่ชัดเจนว่าต่างจาก autosave ปกติ + แสดงว่าเนื้อหาที่แชร์อยู่เก่ากว่าปัจจุบันหรือไม่)
 - **Shared types:** `packages/shared/src/types.ts` เพิ่ม ShareLink DTO (กฎเหล็ก #8)
 
 ---
