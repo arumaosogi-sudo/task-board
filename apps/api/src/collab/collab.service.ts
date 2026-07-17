@@ -8,6 +8,7 @@ import {
   onLoadDocumentPayload,
   onStoreDocumentPayload,
 } from '@hocuspocus/server'
+import * as net from 'net'
 import * as Y from 'yjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -57,8 +58,16 @@ export class CollabService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     const port = parseInt(this.config.get<string>('COLLAB_PORT', '3002'), 10)
+
+    // Hocuspocus's own listen() doesn't attach an 'error' handler to its internal
+    // httpServer, so a bind failure (e.g. a still-terminating previous deployment
+    // holding the port during a platform restart) throws an *uncaught* exception
+    // that kills the whole process — taking the REST API down with it, not just
+    // collab. Probe the port ourselves first and back off/retry, since the
+    // previous holder is expected to release it shortly on a graceful redeploy.
+    await this.waitForPortAvailable(port)
 
     this.server = new Hocuspocus()
     this.server.configure({
@@ -68,12 +77,40 @@ export class CollabService implements OnModuleInit, OnModuleDestroy {
       onLoadDocument: (data) => this.loadDocument(data),
       onStoreDocument: (data) => this.storeDocument(data),
     })
-    this.server.listen()
+    await this.server.listen()
     this.logger.log(`Hocuspocus collaboration server listening on ws://localhost:${port}`)
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.server?.destroy()
+  }
+
+  /**
+   * Probes `port` with a throwaway server before handing it to Hocuspocus.
+   * Retries with backoff instead of letting an EADDRINUSE crash the process —
+   * see the comment in onModuleInit for why this is necessary at all. Gives up
+   * (and lets Hocuspocus's own attempt fail loudly) after the deadline so a
+   * genuinely stuck port doesn't hang startup forever.
+   */
+  private async waitForPortAvailable(
+    port: number,
+    { retries = 15, delayMs = 2000 }: { retries?: number; delayMs?: number } = {},
+  ): Promise<void> {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const available = await new Promise<boolean>((resolve) => {
+        const probe = net.createServer()
+        probe.once('error', () => resolve(false))
+        probe.once('listening', () => probe.close(() => resolve(true)))
+        probe.listen(port, '0.0.0.0')
+      })
+      if (available) return
+      this.logger.warn(
+        `Port ${port} still in use (likely a previous deployment finishing shutdown) — ` +
+          `retry ${attempt}/${retries} in ${delayMs}ms`,
+      )
+      await new Promise((resolve) => setTimeout(resolve, delayMs))
+    }
+    this.logger.error(`Port ${port} still in use after ${retries} retries — attempting to bind anyway`)
   }
 
   /* --------------------------- lifecycle hooks ---------------------------- */
