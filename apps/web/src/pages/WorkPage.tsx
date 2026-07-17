@@ -7,6 +7,7 @@ import type { Editor } from '@tiptap/react'
 import { Button, Field, Input, Modal, Segmented } from '../components/ui'
 import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
+import { ProjectActivityDrawer } from '../components/ProjectActivityDrawer'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
@@ -181,6 +182,7 @@ export default function WorkPage() {
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
   const [editorApi, setEditorApi] = useState<Editor | null>(null)
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
@@ -387,7 +389,11 @@ export default function WorkPage() {
         </Link>
         <h1 className="truncate font-heading text-[15px] font-semibold">{project?.name ?? t('work.workPage')}</h1>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">{project?.myRole}</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => setActivityOpen(true)} title={t('work.activity')} aria-label={t('work.activity')}
+            className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5">
+            <Icon.list width={18} height={18} />
+          </button>
           <Link to={`/projects/${id}/settings`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" title={t('common.settings')} aria-label={t('common.settings')}>
             <Icon.invite width={18} height={18} />
           </Link>
@@ -502,6 +508,14 @@ export default function WorkPage() {
           )}
         </main>
       </div>
+
+      {/* Project-scoped activity feed (Sprint 4) — reuses useProjectChanges bound to this project */}
+      <ProjectActivityDrawer
+        projectId={id}
+        projectName={project?.name ?? t('work.workPage')}
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+      />
 
       {/* Version history + diff (Phase 4.5) */}
       {selectedId && doc && (

@@ -176,6 +176,7 @@
     "offline": "ออฟไลน์",
     "onlineNow": "ผู้ที่กำลังออนไลน์",
     "versionHistory": "ประวัติเวอร์ชัน",
+    "activity": "กิจกรรม",
     "exportPdf": "ส่งออก PDF",
     "createFileTitle": "สร้างไฟล์ใหม่",
     "document": "เอกสาร",
@@ -294,6 +295,11 @@
     "openFile": "เปิดไฟล์",
     "viewAllHistory": "ดูประวัติทั้งหมดของไฟล์นี้",
     "loadError": "โหลดข้อมูลไม่สำเร็จ ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง"
+  },
+  "projectActivity": {
+    "title": "กิจกรรม",
+    "emptyTitle": "ยังไม่มีความเคลื่อนไหว",
+    "emptyBody": "เมื่อมีคนแก้ไขเอกสารใน project นี้ ความเคลื่อนไหวจะปรากฏที่นี่"
   },
   "search": {
     "placeholder": "ค้นหา project, ไฟล์ หรือเนื้อหา…",
