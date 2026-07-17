@@ -57,7 +57,9 @@ async function bootstrap() {
   const allowedOrigins = parseOrigins()
   app.enableCors({
     // Reflect only whitelisted origins; allow same-origin/curl (no Origin header).
-    origin: (origin, callback) => {
+    // `enableCors(options?: any)` gives no contextual type here, so the callback
+    // params are annotated explicitly (matches the `cors` package's CustomOrigin shape).
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
       return callback(new Error(`Origin ${origin} not allowed by CORS`), false)
     },

@@ -28,7 +28,9 @@ export class ProjectRoleGuard implements CanActivate {
 
     const req = context.switchToHttp().getRequest<Request & { user?: AuthUser; membership?: Membership }>()
     const user = req.user
-    const projectId = req.params.id
+    // Express 5's route param types allow `string | string[]` for repeated params;
+    // `:id` is a single named segment so it is always a string at runtime.
+    const projectId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id
     if (!user || !projectId) throw new NotFoundException({ code: 'project-not-found' })
 
     const membership = await this.prisma.membership.findUnique({
