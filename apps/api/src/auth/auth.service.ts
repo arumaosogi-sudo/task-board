@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { User, UserSetting } from '@prisma/client'
 import * as bcrypt from 'bcrypt'
+import type { StringValue } from 'ms'
 import { PrismaService } from '../prisma/prisma.service'
 import { UsersService } from '../users/users.service'
 import { MailService } from '../mail/mail.service'
@@ -81,7 +82,10 @@ export class AuthService {
     const payload: JwtPayload = { sub: user.id, username: user.username, email: user.email }
     return this.jwt.signAsync(payload, {
       secret: this.config.get<string>('JWT_SECRET'),
-      expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES', '15m'),
+      // jsonwebtoken's types now require the `ms`-style StringValue literal union
+      // instead of a plain string; the value itself is still just an env-configured
+      // duration string (e.g. "15m") — this is a type-only cast, no behavior change.
+      expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES', '15m') as StringValue,
     })
   }
 
