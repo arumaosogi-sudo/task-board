@@ -410,30 +410,77 @@ export default function WorkPage() {
   }, [historyFromUrl, doc, selectedId, fileFromUrl, searchParams, setSearchParams])
 
   // Dependency-free PDF export: open the document in a print window → "Save as PDF".
+  // Renders as real, multi-page A4 (like Word) rather than one long column:
+  //   • @page defines the physical A4 size + a 25.4mm (1-inch) margin, matching the
+  //     editor's .tb-page padding (96px @ 96dpi). The printable content box then equals
+  //     the editor's content area (portrait 210mm−2×25.4mm ≈ 601.7px vs 794−192 = 602px;
+  //     landscape ≈ 930.5px vs 1123−192 = 931px), so text wraps identically to what the
+  //     author sees while writing — no reflow.
+  //   • The app's Google Fonts (incl. Noto Sans Thai) are @import-ed into the print
+  //     window and we wait on document.fonts.ready before printing, so Thai renders with
+  //     the correct shaping font instead of a broken system fallback.
+  //   • Atomic blocks (headings, list items, table rows, boxes, images) get
+  //     break-inside:avoid so a page break never slices through them; long paragraphs are
+  //     intentionally left splittable so they flow across pages naturally.
   function exportPdf() {
     if (!doc) return
     const body = content || doc.content || '<p></p>'
-    const w = window.open('', '_blank', 'width=820,height=1000')
+    const landscape = doc.orientation === 'landscape'
+    const w = window.open('', '_blank', 'width=900,height=1000')
     if (!w) return
     const safeName = doc.name.replace(/[<>&]/g, '')
-    w.document.write(
-      `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${safeName}</title>` +
-      `<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 28px;color:#1d2333;line-height:1.65}` +
-      `h1{font-size:24px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px}h2{font-size:19px;margin:20px 0 8px}` +
-      `ul,ol{padding-left:24px}a{color:#4f46e5}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
+    // Same font set as apps/web/src/index.css line 1 — keep in sync if that @import changes.
+    const fontImport =
+      "@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700" +
+      '&family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700' +
+      "&family=JetBrains+Mono:wght@400;500;700&display=swap');"
+    const css =
+      `${fontImport}` +
+      // Physical A4 page + 1-inch margin === editor's .tb-page 96px padding.
+      `@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:25.4mm}` +
+      `*{box-sizing:border-box}html,body{margin:0;padding:0}` +
+      // Base type mirrors the editor (body 14px Inter/Noto; force color-adjust so box/table
+      // fills and highlighter strokes survive the print pipeline).
+      `body{font-family:'Inter','Noto Sans Thai',sans-serif;font-size:14px;line-height:1.6;` +
+      `color:#1d2333;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
+      // Headings mirror .tb-prose (Sora, matching sizes/weights) so wrapping matches.
+      `h1{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:24px;font-weight:700;line-height:1.25;margin:16px 0 8px}` +
+      `h2{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:20px;font-weight:600;line-height:1.3;margin:12px 0 8px}` +
+      `h3{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:17px;font-weight:600;line-height:1.4;margin:10px 0 6px}` +
+      `p{margin:8px 0}ul,ol{margin:8px 0;padding-left:24px}li{margin:2px 0}` +
+      `a{color:#4f46e5;text-decoration:underline}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
+      `table{width:100%;border-collapse:collapse;margin:16px 0}` +
+      `th,td{border:1px solid #d6dae4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#f3f4f8;font-weight:600}` +
       `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}` +
       // Task/checklist blocks — flatten the list bullets and lay the checkbox beside its text.
-      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
+      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:8px 0}` +
       `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
-      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
+      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1;min-width:0}` +
       `ul[data-type="taskList"] li>div>p{margin:0}` +
-      // Inline drawing layer (ADR 0005 D5). The print body is a single flowing column,
-      // not paginated A4, so the overlay is positioned relative to the whole document —
-      // shapes/relative position are preserved (owner-accepted limitation), text may not
-      // align. The wrapper is position:relative so the absolute SVG anchors to it.
-      `.tb-print-wrap{position:relative}</style></head><body>` +
+      // Keep atomic blocks whole across the A4 page boundary. Paragraphs are deliberately
+      // NOT listed — they split across pages like a Word document.
+      `h1,h2,h3,h4,li,tr,img,.tb-box,blockquote{break-inside:avoid;page-break-inside:avoid}` +
+      // Don't strand a heading at the very bottom of a page, orphaned from its content.
+      `h1,h2,h3,h4{break-after:avoid;page-break-after:avoid}` +
+      // Inline drawing layer (ADR 0005 D5). The overlay SVG is authored in full-page pixel
+      // coords (0..794 portrait / 0..1123 landscape, margins included) and is
+      // position:absolute over the wrapper. Under real A4 pagination it is anchored to the
+      // top of page 1 and scaled to the content box, so shapes/relative position are
+      // preserved (owner-accepted limitation) but it does not align to text and does not
+      // paginate. Being absolute, it adds no flow height — it can't spawn blank pages.
+      `.tb-print-wrap{position:relative}`
+    const script =
+      '(function(){var done=false;' +
+      'function go(){if(done)return;done=true;try{window.focus();window.print()}catch(e){}}' +
+      // Wait for the Thai/Latin webfonts before printing; fall back after 3s so a slow or
+      // blocked font network can never leave the export stuck un-printed.
+      'if(document.fonts&&document.fonts.ready){document.fonts.ready.then(go);setTimeout(go,3000)}' +
+      'else{window.onload=go}})();'
+    w.document.write(
+      `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${safeName}</title>` +
+      `<style>${css}</style></head><body>` +
       `<div class="tb-print-wrap">${body}${drawingsSvg}</div>` +
-      `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
+      `<script>${script}</script></body></html>`,
     )
     w.document.close()
   }
