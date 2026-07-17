@@ -9,6 +9,7 @@ import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
 import { useComments, useCreateComment } from '../lib/comments'
 import { ProjectActivityDrawer } from '../components/ProjectActivityDrawer'
+import { SharePanel } from '../components/SharePanel'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
@@ -192,6 +193,10 @@ export default function WorkPage() {
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [historyOpen, setHistoryOpen] = useState(false)
   const [activityOpen, setActivityOpen] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
+  // Tracks the moment the doc was last edited locally, so the Share panel can flag when
+  // the published snapshot is older than the current document (SRS §3 publish badge).
+  const [lastEditedAt, setLastEditedAt] = useState<string | null>(null)
   const [editorApi, setEditorApi] = useState<Editor | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
@@ -333,12 +338,14 @@ export default function WorkPage() {
     }
     setPresence([]); setConnStatus('connecting'); setDrawingsSvg('')
     setCommentsOpen(false); setActiveCommentId(null)
+    setShareOpen(false); setLastEditedAt(null)
   }, [doc?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Debounced autosave (800ms) — only after the user edits the loaded content.
   useEffect(() => {
     if (!selectedId || !doc || doc.id !== loadedDocId.current) return
     if (content === doc.content) return
+    setLastEditedAt(new Date().toISOString())
     setStatus('saving')
     const t = setTimeout(async () => {
       try { await save.mutateAsync(content); savedContentRef.current = content; setStatus('saved') }
@@ -654,6 +661,16 @@ export default function WorkPage() {
                     <Icon.commit width={17} height={17} />
                   </button>
                 )}
+                {isOwner && (
+                  <button onClick={() => setShareOpen(true)} title={t('share.manage.title')}
+                    className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
+                    aria-label={t('share.manage.title')}>
+                    <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                      <path d="m8.6 13.5 6.8 4M15.4 6.5 8.6 10.5" />
+                    </svg>
+                  </button>
+                )}
                 <button onClick={() => setHistoryOpen(true)} title={t('work.versionHistory')}
                   className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
                   aria-label={t('work.versionHistory')}>
@@ -754,6 +771,19 @@ export default function WorkPage() {
         open={activityOpen}
         onClose={() => setActivityOpen(false)}
       />
+
+      {/* Public share links (Sprint 4, ADR 0006) — Owner-only management panel. */}
+      {selectedId && doc && isOwner && (
+        <SharePanel
+          open={shareOpen}
+          onClose={() => setShareOpen(false)}
+          projectId={id}
+          fileId={doc.id}
+          isEmpty={!content || content.trim() === ''}
+          docUpdatedAt={lastEditedAt ?? doc.updatedAt}
+          onToast={showToast}
+        />
+      )}
 
       {/* Version history + diff (Phase 4.5) */}
       {selectedId && doc && (

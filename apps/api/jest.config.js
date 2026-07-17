@@ -28,6 +28,12 @@ module.exports = {
       },
     ],
   },
+  // `sanitize-html` (used by the share module) pulls a few ESM-only deps that ship
+  // untranspiled `import` syntax. By default Jest skips node_modules, so let @swc/jest
+  // transpile just this subtree to CJS. Everything else stays ignored (fast).
+  transformIgnorePatterns: [
+    '/node_modules/(?!(sanitize-html|htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities|css-select|css-what|boolbase|nth-check)/)',
+  ],
   // Mirror the tsconfig path alias so unit tests can import shared types.
   moduleNameMapper: {
     '^@task-board/shared$': '<rootDir>/../../../packages/shared/src/index.ts',
