@@ -4,7 +4,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useStat
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
-import { Button, Field, Input, Modal, Segmented } from '../components/ui'
+import { Button, Field, Input, Menu, MenuItem, Modal, Segmented } from '../components/ui'
 import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
 import { useComments, useCreateComment } from '../lib/comments'
@@ -200,6 +200,7 @@ export default function WorkPage() {
   const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout>>()
   const commitRevision = useCreateRevision(id, selectedId ?? '')
+  const [exporting, setExporting] = useState<'word' | 'md' | null>(null)
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const isOwner = project?.myRole === 'Owner'
@@ -488,6 +489,44 @@ export default function WorkPage() {
     w.document.close()
   }
 
+  // Freshest HTML for export: prefer the live editor (covers edits newer than the 1s
+  // debounced `content` mirror), then the mirror, then the last-persisted body.
+  const exportSourceHtml = useCallback(
+    () => editorApi?.getHTML() || content || doc?.content || '<p></p>',
+    [editorApi, content, doc],
+  )
+
+  // Word / Markdown export. The converters are heavy (turndown + html-to-docx), so the
+  // module is code-split and dynamically imported only when the user actually exports —
+  // it never inflates the main editor bundle. Failures surface a non-blocking alert.
+  const handleExportWord = useCallback(async () => {
+    if (!doc || exporting) return
+    setExporting('word')
+    try {
+      const { exportWord } = await import('../lib/export/word')
+      await exportWord(exportSourceHtml(), doc.name)
+    } catch (err) {
+      console.error('[export] Word failed:', err)
+      alert(t('work.exportFailed'))
+    } finally {
+      setExporting(null)
+    }
+  }, [doc, exporting, exportSourceHtml, t])
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!doc || exporting) return
+    setExporting('md')
+    try {
+      const { exportMarkdown } = await import('../lib/export/markdown')
+      await exportMarkdown(exportSourceHtml(), doc.name)
+    } catch (err) {
+      console.error('[export] Markdown failed:', err)
+      alert(t('work.exportFailed'))
+    } finally {
+      setExporting(null)
+    }
+  }, [doc, exporting, exportSourceHtml, t])
+
   async function submitCreate() {
     if (!newName.trim()) return
     try {
@@ -614,10 +653,33 @@ export default function WorkPage() {
                   aria-label={t('work.versionHistory')}>
                   <Icon.clock width={17} height={17} />
                 </button>
-                <button onClick={exportPdf} title={t('work.exportPdf')}
-                  className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('work.exportPdf')}>
-                  <Icon.download width={17} height={17} />
-                </button>
+                <Menu
+                  align="right"
+                  trigger={
+                    <button
+                      title={t('work.export')}
+                      aria-label={t('work.export')}
+                      aria-busy={exporting !== null}
+                      className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
+                    >
+                      {exporting !== null ? (
+                        <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <Icon.download width={17} height={17} />
+                      )}
+                    </button>
+                  }
+                >
+                  <MenuItem icon={<Icon.download width={16} height={16} />} onClick={exportPdf}>
+                    {t('work.exportPdf')}
+                  </MenuItem>
+                  <MenuItem icon={<Icon.file width={16} height={16} />} onClick={handleExportWord}>
+                    {t('work.exportWord')}
+                  </MenuItem>
+                  <MenuItem icon={<Icon.file width={16} height={16} />} onClick={handleExportMarkdown}>
+                    {t('work.exportMarkdown')}
+                  </MenuItem>
+                </Menu>
               </div>
               <div className="min-h-0 flex-1 overflow-auto bg-ink/[0.02] p-6">
                 {/* SPEC 1 — width-fit wrapper so the A4 page surface centers without a Card frame. */}
