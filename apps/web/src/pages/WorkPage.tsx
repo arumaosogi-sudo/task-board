@@ -439,9 +439,12 @@ export default function WorkPage() {
       // Physical A4 page + 1-inch margin === editor's .tb-page 96px padding.
       `@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:25.4mm}` +
       `*{box-sizing:border-box}html,body{margin:0;padding:0}` +
-      // Base type mirrors the editor (body 14px Inter/Noto; force color-adjust so box/table
-      // fills and highlighter strokes survive the print pipeline).
-      `body{font-family:'Inter','Noto Sans Thai',sans-serif;font-size:14px;line-height:1.6;` +
+      // Base type mirrors the editor's editable surface EXACTLY — CollabEditor.tsx renders
+      // .tb-prose as `text-[15px] leading-relaxed` (15px / line-height 1.625). Matching both
+      // the font-size and the content-box width (via @page margin) is what makes the export
+      // wrap line-for-line like the on-screen A4 page. color-adjust:exact keeps box/table
+      // fills and highlighter strokes through the print pipeline.
+      `body{font-family:'Inter','Noto Sans Thai',sans-serif;font-size:15px;line-height:1.625;` +
       `color:#1d2333;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
       // Headings mirror .tb-prose (Sora, matching sizes/weights) so wrapping matches.
       `h1{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:24px;font-weight:700;line-height:1.25;margin:16px 0 8px}` +

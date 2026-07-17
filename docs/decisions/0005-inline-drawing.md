@@ -72,10 +72,15 @@ UndoManager ของมันเองภายใน ยากจะ track arr
 (reuse logic เดิมของ `DrawingCanvas.buildSvg`, ย้ายเป็น util) → แทรก `<svg>` แบบ
 `position:absolute;inset:0` ครอบ container ของหน้าใน print HTML.
 
-> ⚠️ **ข้อจำกัดที่ต้องยอมรับ (ระบุใน Consequences):** print HTML ปัจจุบันเป็น flow คอลัมน์เดียว
-> `max-width:720px` **ไม่ใช่หน้า A4 หลายหน้าจริง**. overlay จึงวาง "ทับทั้งเอกสาร" ตามสัดส่วน A4
-> หน้าเดียว — ตรงกับ mental model "วาดทับหน้ากระดาษ" เพราะ editor ก็เป็นหน้าเดียวเลื่อนยาว
-> (`tb-page` เดียว). ถ้าอนาคตทำ pagination จริงต้องรื้อ mapping นี้.
+> ⚠️ **ข้อจำกัดที่ต้องยอมรับ (ระบุใน Consequences):** ~~print HTML ปัจจุบันเป็น flow คอลัมน์เดียว
+> `max-width:720px`~~ **[อัปเดต 2026-07-17]** `exportPdf` เปลี่ยนเป็น **A4 หลายหน้าจริง** แล้ว
+> (`@page{size:A4 [orientation];margin:25.4mm}` — content box ตรงกับพื้นที่เขียนของ `tb-page`
+> จึงไม่ reflow). overlay SVG (`strokesToSvg`) เป็น `position:absolute;top:0;left:0;width:100%`
+> ในพิกัดเต็มหน้า (0..794 portrait / 0..1123 landscape) → ตอนนี้ถูก **ยึดไว้ที่หน้าแรก (page 1)
+> และ scale ลงให้เท่า content box** ของ A4. เนื่องจากเป็น absolute จึง **ไม่เพิ่ม flow height →
+> ไม่ทำให้เกิดหน้าว่างเกิน และไม่ดัน/ตัดเนื้อหา** (verify แล้ว: SVG สูง 1600px ไม่เพิ่มความสูง body).
+> รูปทรง/ตำแหน่งสัมพัทธ์ยังคงอยู่ (owner-accepted) แต่ **ไม่ align กับ text และไม่ paginate ตามหน้า**.
+> การทำ overlay ให้ paginate จริง (slice stroke ต่อหน้า) เป็นงานใหญ่แยกต่างหาก — ยังไม่ทำในรอบนี้.
 
 ### D6 — Viewer read-only
 
