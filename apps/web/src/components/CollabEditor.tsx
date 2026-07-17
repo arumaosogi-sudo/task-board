@@ -207,10 +207,21 @@ const TABLE_ACTIONS: { key: string; title: string; run: (e: Editor) => void; can
   { key: 'delTable', title: 'ลบตาราง', run: (e) => e.chain().focus().deleteTable().run() },
 ]
 
-export function CollabEditor({
-  fileId, projectId, token, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
+/** Inner props = public props + the collab primitives the outer wrapper owns. */
+interface CollabInnerProps extends CollabEditorProps {
+  ydoc: Y.Doc
+  provider: HocuspocusProvider
+  drawUndo: Y.UndoManager
+}
+
+// The editor body. ydoc / provider / drawUndo arrive as guaranteed-non-null props
+// (the outer <CollabEditor> only renders this once it has created them in an effect),
+// so every hook below can treat them as always-present — no null-guard sprawl.
+function CollabEditorInner({
+  fileId, projectId, initialContent, readOnly, orientation, onChange, user, onPresenceChange, onStatusChange, onReady, members, onDrawingsSvgChange,
   canComment, onCreateComment, onCommentActivate,
-}: CollabEditorProps) {
+  ydoc, provider, drawUndo,
+}: CollabInnerProps) {
   const { t } = useTranslation()
   const fileRef = useRef<HTMLInputElement>(null)
   // Comment click-activation reads through a ref: editorProps is built once at mount, so the
@@ -226,7 +237,9 @@ export function CollabEditor({
   const saveTimer = useRef<ReturnType<typeof setTimeout>>()
   // Re-render the toolbar on selection/content change so active state stays live.
   const [, forceTick] = useState(0)
-  const [synced, setSynced] = useState(false)
+  // First-handshake flag for the one-time legacy seed. Seeded from provider.synced in
+  // case the provider already synced before this component's subscription effect runs.
+  const [synced, setSynced] = useState(() => provider.synced)
   // Inline drawing tool state (SPEC งานที่ 2) — local UI, never synced. The strokes
   // themselves live in a Y.Array (DrawingOverlay), synced + persisted with the doc.
   const [drawTool, setDrawTool] = useState<DrawTool>('pen')
@@ -253,51 +266,23 @@ export function CollabEditor({
   const tablistRef = useRef<HTMLDivElement>(null)
   const [pill, setPill] = useState<{ left: number; top: number; width: number; height: number } | null>(null)
 
-  // Created exactly once per mount (per file, thanks to the parent's `key`).
-  //
-  // NOT a useState lazy initializer: React 18 StrictMode deliberately invokes a
-  // useState initializer function TWICE in dev to catch impurities (per the React
-  // docs — "the initializer should not have side effects"), so the previous
-  // `useState(() => new HocuspocusProvider(...))` opened TWO live WebSocket
-  // connections racing for the same Yjs document room every mount, with the
-  // discarded one still calling its `onSynced` handler (the exact
-  // "state update on a component that hasn't mounted yet" warning this produced).
-  // A ref guarded in the render body persists across that double-invoke (same
-  // fiber, same ref object), so the check-then-create below runs the real
-  // side effect exactly once.
-  const collabRef = useRef<{ ydoc: Y.Doc; provider: HocuspocusProvider } | null>(null)
-  if (!collabRef.current) {
-    const ydoc = new Y.Doc()
-    const provider = new HocuspocusProvider({
-      url: COLLAB_URL,
-      name: fileId,
-      document: ydoc,
-      token,
-      onSynced: () => setSynced(true),
-    })
-    collabRef.current = { ydoc, provider }
-  }
-  const { ydoc, provider } = collabRef.current
+  // ydoc / provider / drawUndo are created by the outer <CollabEditor> inside a
+  // useEffect and handed down here as non-null props. This is deliberate: creating
+  // them in a render body (a useState lazy initializer, or a ref guard) gives React
+  // NO cleanup path for the instances that StrictMode + <Suspense> code-splitting
+  // discard, so every mount used to leak multiple live WebSocket connections racing
+  // to own the same Yjs room (a real browser session showed 3 onAuthenticate hits
+  // per single mount). A parent useEffect tears each discarded instance down
+  // (mount → cleanup → remount), so exactly one provider survives.
 
-  // Dedicated UndoManager for the inline drawing layer (ADR 0005 D4). Scoped to the
-  // `drawings` Y.Array and tracking only local ink edits (DRAW_ORIGIN), so undo/redo in
-  // draw mode reverts *my* last stroke and never a peer's — separate from the text
-  // (y-prosemirror) undo stack. Same StrictMode double-invoke hazard as the provider
-  // above (a useState lazy initializer runs twice in dev) — ref-guarded for the same
-  // reason: constructing this attaches live listeners to `ydoc`, so a discarded second
-  // instance would double-track every drawing edit against the (correctly) surviving one.
-  const drawUndoRef = useRef<Y.UndoManager | null>(null)
-  if (!drawUndoRef.current) {
-    drawUndoRef.current = new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) })
-  }
-  const drawUndo = drawUndoRef.current
-
-  // Tear down the socket + doc on unmount so switching files doesn't leak connections.
-  useEffect(() => () => {
-    drawUndo.destroy()
-    provider.destroy()
-    ydoc.destroy()
-  }, [drawUndo, provider, ydoc])
+  // First handshake with the server. Owned here (not the provider constructor) so the
+  // one-time legacy seed below can react to it.
+  useEffect(() => {
+    const onSynced = () => setSynced(true)
+    provider.on('synced', onSynced)
+    if (provider.synced) setSynced(true)
+    return () => { provider.off('synced', onSynced) }
+  }, [provider])
 
   const extensions = useMemo(() => [
     // History off: the Collaboration extension provides Yjs-backed undo/redo instead.
@@ -1185,4 +1170,56 @@ export function CollabEditor({
       </div>
     </div>
   )
+}
+
+/**
+ * Public entry point. Owns the collaboration primitives (Y.Doc + HocuspocusProvider +
+ * drawing UndoManager) and creates them in a useEffect — NOT in the render body.
+ *
+ * Why an effect: this component is lazy-loaded inside a <Suspense> boundary and rendered
+ * under React 18 StrictMode, a combination that drives extra render → discard → remount
+ * cycles. A render-body / useState-initializer / ref-guard create-once pattern has no
+ * cleanup path for a discarded instance, so each discarded render leaked a live
+ * WebSocket that still authenticated against the shared Yjs room (observed: 3 successful
+ * onAuthenticate calls for one document on a single fresh mount → unstable sync). An
+ * effect's cleanup runs on every StrictMode mount→unmount→remount, so the discarded
+ * provider is torn down before it can race, leaving exactly one live connection.
+ *
+ * The inner editor only mounts once the primitives exist, so its hooks never see null.
+ */
+export function CollabEditor(props: CollabEditorProps) {
+  const { fileId, token } = props
+  const [collab, setCollab] = useState<{ ydoc: Y.Doc; provider: HocuspocusProvider; drawUndo: Y.UndoManager } | null>(null)
+
+  useEffect(() => {
+    const ydoc = new Y.Doc()
+    const provider = new HocuspocusProvider({ url: COLLAB_URL, name: fileId, document: ydoc, token })
+    // Drawing-layer UndoManager (ADR 0005 D4): scoped to the `drawings` Y.Array and only
+    // tracks local ink (DRAW_ORIGIN), so draw-mode undo reverts my stroke, never a peer's.
+    const drawUndo = new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) })
+    setCollab({ ydoc, provider, drawUndo })
+    return () => {
+      // Order: manager → provider (closes the socket) → doc.
+      drawUndo.destroy()
+      provider.destroy()
+      ydoc.destroy()
+      setCollab(null)
+    }
+    // `token` is intentionally excluded: it is an (optionally async) getter that Hocuspocus
+    // re-invokes on every reconnect, so a fresh getter identity from a parent re-render must
+    // NOT tear down and rebuild the room. `fileId` is the document identity and the only
+    // thing that should recreate the connection. The parent also remounts us via key={doc.id}.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fileId])
+
+  // First paint (and StrictMode's discarded passes) before the effect commits: no room yet.
+  if (!collab) {
+    return (
+      <div className="grid place-items-center py-16">
+        <span className="size-6 animate-spin rounded-full border-2 border-primary border-t-transparent" role="status" aria-label="Loading editor" />
+      </div>
+    )
+  }
+
+  return <CollabEditorInner {...props} ydoc={collab.ydoc} provider={collab.provider} drawUndo={collab.drawUndo} />
 }
