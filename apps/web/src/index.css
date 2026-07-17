@@ -159,6 +159,35 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 .tb-box-resize:hover { transform: scale(1.25); }
 .tb-box-resize:active { transform: scale(1.1); }
 
+/* Sprint 4 — Box tint. A custom pastel is always a LIGHT surface, so pin text to a dark
+   ink; this keeps every preset AA-readable in BOTH light and dark mode (the tint reads
+   like a highlighter, not a theme surface). Untinted boxes keep the themed default. */
+.tb-box[data-tinted='true'] { color: rgb(29 35 51); }
+.tb-box[data-tinted='true'] a { color: rgb(29 35 51); text-decoration: underline; }
+/* Preset picker — a floating pill above a selected box (editor-only, top-right so it
+   clears the top-left drag handle and the bottom-right resize handle). */
+.tb-box-colors {
+  @apply absolute -top-3 right-3 z-10 flex items-center gap-1 rounded-full border border-line
+         bg-card px-1.5 py-1 shadow-pop;
+}
+.tb-box-swatch {
+  @apply size-4 rounded-full border border-line transition;
+}
+.tb-box-swatch:hover { transform: scale(1.18); }
+.tb-box-swatch-active { @apply ring-2 ring-primary ring-offset-1 ring-offset-card border-transparent; }
+/* The "default" swatch has no stored color → preview it with the themed box surface. */
+.tb-box-swatch[data-default='true'] { background: rgb(var(--c-primary-soft)); }
+/* Persistent "customize" affordance — a content box can't be NodeSelected by a plain click,
+   so this stays visible while editing to make the controls discoverable. Faint at rest,
+   solid on hover/focus so it doesn't compete with the text. */
+.tb-box-tune {
+  @apply absolute -right-2 -top-2 z-10 grid size-6 place-items-center rounded-md border border-line
+         bg-card text-subtle opacity-60 shadow-soft transition;
+}
+.tb-box:hover .tb-box-tune { @apply opacity-100; }
+.tb-box-tune:hover { @apply text-primary opacity-100 shadow-pop; }
+.tb-box-tune:focus-visible { @apply text-primary opacity-100; outline: none; box-shadow: 0 0 0 3px rgb(var(--c-primary) / 0.45); }
+
 /* Task/checklist blocks (Sprint 4, TipTap TaskList/TaskItem). Rendered as
    <ul data-type="taskList"><li><label><input><span></label><div>…</div></li>. */
 .tb-prose ul[data-type='taskList'] { @apply my-2 list-none pl-0; }

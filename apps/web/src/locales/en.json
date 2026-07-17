@@ -176,7 +176,12 @@
     "offline": "Offline",
     "onlineNow": "People currently online",
     "versionHistory": "Version history",
+    "export": "Export",
+    "activity": "Activity",
     "exportPdf": "Export PDF",
+    "exportWord": "Export Word (.docx)",
+    "exportMarkdown": "Export Markdown (.md)",
+    "exportFailed": "Export failed. Please try again.",
     "createFileTitle": "Create a new file",
     "document": "Document",
     "folder": "Folder",
@@ -210,6 +215,18 @@
     "insertImage": "Insert image",
     "insertBox": "Insert text box",
     "deleteBox": "Delete text box",
+    "boxDrag": "Drag to move box",
+    "boxCustomize": "Customize box",
+    "boxColor": "Box color",
+    "boxColors": {
+      "default": "Default",
+      "slate": "Slate",
+      "red": "Red",
+      "amber": "Amber",
+      "green": "Green",
+      "blue": "Blue",
+      "violet": "Violet"
+    },
     "uploading": "Uploading image…",
     "uploadFailed": "Upload failed",
     "retry": "Retry",
@@ -300,12 +317,24 @@
     "profileAccount": "Profile & account",
     "ago": "{{time}} ago"
   },
+  "commit": {
+    "button": "Commit",
+    "title": "Save version (Commit)",
+    "messageLabel": "Describe your changes",
+    "placeholder": "e.g. Reworded summary, added table…",
+    "hint": "A short note helps you recognize this version later (optional).",
+    "action": "Commit",
+    "done": "Version saved",
+    "failed": "Couldn’t save version. Please try again."
+  },
   "history": {
     "title": "Version history",
     "saveCurrentVersion": "Save current version",
     "labelPlaceholder": "Label (optional)",
     "saveVersion": "Save version",
     "noLabel": "No label",
+    "autoSnapshot": "Auto-saved",
+    "commitBadge": "Commit",
     "noVersions": "No saved versions yet",
     "selectToCompare": "Select a version on the left to compare with the current document",
     "comparing": "Comparing…",
@@ -340,6 +369,11 @@
     "openFile": "Open file",
     "viewAllHistory": "View this file's full history",
     "loadError": "Couldn't load updates. Check your connection and try again."
+  },
+  "projectActivity": {
+    "title": "Activity",
+    "emptyTitle": "No activity yet",
+    "emptyBody": "When people edit documents in this project, their activity appears here."
   },
   "search": {
     "placeholder": "Search projects, files, or content…",

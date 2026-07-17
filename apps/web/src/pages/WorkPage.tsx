@@ -4,17 +4,18 @@ import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useStat
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
-import { Button, Field, Input, Modal, Segmented } from '../components/ui'
+import { Button, Field, Input, Menu, MenuItem, Modal, Segmented } from '../components/ui'
 import type { PresenceUser } from '../components/CollabEditor'
 import { HistoryModal } from '../components/HistoryModal'
 import { useComments, useCreateComment } from '../lib/comments'
+import { ProjectActivityDrawer } from '../components/ProjectActivityDrawer'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
 import { getFreshAccessToken } from '../lib/api'
 import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
-import { RevisionsApi } from '../lib/revisions'
+import { RevisionsApi, normalizeCommitLabel, useCreateRevision } from '../lib/revisions'
 import {
   FilesApi,
   useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
@@ -190,9 +191,18 @@ export default function WorkPage() {
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [activityOpen, setActivityOpen] = useState(false)
   const [editorApi, setEditorApi] = useState<Editor | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null)
+  // Manual "Commit" (git-style versioned save with an optional message) — separate from the
+  // silent 5-min auto-snapshot, which stays as-is as a safety net.
+  const [commitOpen, setCommitOpen] = useState(false)
+  const [commitMsg, setCommitMsg] = useState('')
+  const [toast, setToast] = useState<{ tone: 'success' | 'error'; msg: string } | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout>>()
+  const commitRevision = useCreateRevision(id, selectedId ?? '')
+  const [exporting, setExporting] = useState<'word' | 'md' | null>(null)
 
   const canEdit = project?.myRole === 'Owner' || project?.myRole === 'Editor'
   const isOwner = project?.myRole === 'Owner'
@@ -281,6 +291,35 @@ export default function WorkPage() {
   const restoreRevision = useCallback((html: string) => {
     editorApi?.chain().focus().setContent(html).run()
   }, [editorApi])
+
+  // Transient confirmation/error toast (auto-dismisses). Reuses the project's token palette
+  // (add/del surfaces) rather than a new notification system.
+  const showToast = useCallback((tone: 'success' | 'error', msg: string) => {
+    setToast({ tone, msg })
+    clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 3200)
+  }, [])
+  useEffect(() => () => clearTimeout(toastTimer.current), [])
+
+  // Manual commit: persist a revision IMMEDIATELY (bypasses the 5-min auto-snapshot debounce)
+  // using the editor's current HTML + the optional message as the revision label. Distinct
+  // from takeSnapshot so the auto-snapshot path is untouched. Editor+ only (mirrors autosave).
+  async function doCommit() {
+    if (!doc || !canEdit || commitRevision.isPending) return
+    const html = editorApi?.getHTML() ?? content
+    const label = normalizeCommitLabel(commitMsg) // trim + cap at DTO limit, empty → undefined
+    try {
+      await commitRevision.mutateAsync({ content: html, label })
+      // Keep the auto-snapshot baseline in sync so it doesn't immediately re-save identical
+      // content moments later.
+      lastSnapshotContent.current = html
+      setCommitOpen(false)
+      setCommitMsg('')
+      showToast('success', t('commit.done'))
+    } catch {
+      showToast('error', t('commit.failed'))
+    }
+  }
 
   // Sync local content when a different document loads; reset per-doc collab state.
   useEffect(() => {
@@ -374,33 +413,121 @@ export default function WorkPage() {
   }, [historyFromUrl, doc, selectedId, fileFromUrl, searchParams, setSearchParams])
 
   // Dependency-free PDF export: open the document in a print window → "Save as PDF".
+  // Renders as real, multi-page A4 (like Word) rather than one long column:
+  //   • @page defines the physical A4 size + a 25.4mm (1-inch) margin, matching the
+  //     editor's .tb-page padding (96px @ 96dpi). The printable content box then equals
+  //     the editor's content area (portrait 210mm−2×25.4mm ≈ 601.7px vs 794−192 = 602px;
+  //     landscape ≈ 930.5px vs 1123−192 = 931px), so text wraps identically to what the
+  //     author sees while writing — no reflow.
+  //   • The app's Google Fonts (incl. Noto Sans Thai) are @import-ed into the print
+  //     window and we wait on document.fonts.ready before printing, so Thai renders with
+  //     the correct shaping font instead of a broken system fallback.
+  //   • Atomic blocks (headings, list items, table rows, boxes, images) get
+  //     break-inside:avoid so a page break never slices through them; long paragraphs are
+  //     intentionally left splittable so they flow across pages naturally.
   function exportPdf() {
     if (!doc) return
     const body = content || doc.content || '<p></p>'
-    const w = window.open('', '_blank', 'width=820,height=1000')
+    const landscape = doc.orientation === 'landscape'
+    const w = window.open('', '_blank', 'width=900,height=1000')
     if (!w) return
     const safeName = doc.name.replace(/[<>&]/g, '')
-    w.document.write(
-      `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${safeName}</title>` +
-      `<style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:720px;margin:40px auto;padding:0 28px;color:#1d2333;line-height:1.65}` +
-      `h1{font-size:24px;border-bottom:1px solid #e5e7eb;padding-bottom:10px;margin:0 0 16px}h2{font-size:19px;margin:20px 0 8px}` +
-      `ul,ol{padding-left:24px}a{color:#4f46e5}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
+    // Same font set as apps/web/src/index.css line 1 — keep in sync if that @import changes.
+    const fontImport =
+      "@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700" +
+      '&family=Inter:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700' +
+      "&family=JetBrains+Mono:wght@400;500;700&display=swap');"
+    const css =
+      `${fontImport}` +
+      // Physical A4 page + 1-inch margin === editor's .tb-page 96px padding.
+      `@page{size:A4 ${landscape ? 'landscape' : 'portrait'};margin:25.4mm}` +
+      `*{box-sizing:border-box}html,body{margin:0;padding:0}` +
+      // Base type mirrors the editor's editable surface EXACTLY — CollabEditor.tsx renders
+      // .tb-prose as `text-[15px] leading-relaxed` (15px / line-height 1.625). Matching both
+      // the font-size and the content-box width (via @page margin) is what makes the export
+      // wrap line-for-line like the on-screen A4 page. color-adjust:exact keeps box/table
+      // fills and highlighter strokes through the print pipeline.
+      `body{font-family:'Inter','Noto Sans Thai',sans-serif;font-size:15px;line-height:1.625;` +
+      `color:#1d2333;-webkit-print-color-adjust:exact;print-color-adjust:exact}` +
+      // Headings mirror .tb-prose (Sora, matching sizes/weights) so wrapping matches.
+      `h1{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:24px;font-weight:700;line-height:1.25;margin:16px 0 8px}` +
+      `h2{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:20px;font-weight:600;line-height:1.3;margin:12px 0 8px}` +
+      `h3{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:17px;font-weight:600;line-height:1.4;margin:10px 0 6px}` +
+      `p{margin:8px 0}ul,ol{margin:8px 0;padding-left:24px}li{margin:2px 0}` +
+      `a{color:#4f46e5;text-decoration:underline}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
+      `table{width:100%;border-collapse:collapse;margin:16px 0}` +
+      `th,td{border:1px solid #d6dae4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#f3f4f8;font-weight:600}` +
       `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}` +
       // Task/checklist blocks — flatten the list bullets and lay the checkbox beside its text.
-      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:12px 0}` +
+      `ul[data-type="taskList"]{list-style:none;padding-left:0;margin:8px 0}` +
       `ul[data-type="taskList"] li{display:flex;align-items:flex-start;gap:8px;margin:4px 0}` +
-      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1}` +
+      `ul[data-type="taskList"] li>label{margin-top:2px}ul[data-type="taskList"] li>div{flex:1;min-width:0}` +
       `ul[data-type="taskList"] li>div>p{margin:0}` +
-      // Inline drawing layer (ADR 0005 D5). The print body is a single flowing column,
-      // not paginated A4, so the overlay is positioned relative to the whole document —
-      // shapes/relative position are preserved (owner-accepted limitation), text may not
-      // align. The wrapper is position:relative so the absolute SVG anchors to it.
-      `.tb-print-wrap{position:relative}</style></head><body>` +
+      // Keep atomic blocks whole across the A4 page boundary. Paragraphs are deliberately
+      // NOT listed — they split across pages like a Word document.
+      `h1,h2,h3,h4,li,tr,img,.tb-box,blockquote{break-inside:avoid;page-break-inside:avoid}` +
+      // Don't strand a heading at the very bottom of a page, orphaned from its content.
+      `h1,h2,h3,h4{break-after:avoid;page-break-after:avoid}` +
+      // Inline drawing layer (ADR 0005 D5). The overlay SVG is authored in full-page pixel
+      // coords (0..794 portrait / 0..1123 landscape, margins included) and is
+      // position:absolute over the wrapper. Under real A4 pagination it is anchored to the
+      // top of page 1 and scaled to the content box, so shapes/relative position are
+      // preserved (owner-accepted limitation) but it does not align to text and does not
+      // paginate. Being absolute, it adds no flow height — it can't spawn blank pages.
+      `.tb-print-wrap{position:relative}`
+    const script =
+      '(function(){var done=false;' +
+      'function go(){if(done)return;done=true;try{window.focus();window.print()}catch(e){}}' +
+      // Wait for the Thai/Latin webfonts before printing; fall back after 3s so a slow or
+      // blocked font network can never leave the export stuck un-printed.
+      'if(document.fonts&&document.fonts.ready){document.fonts.ready.then(go);setTimeout(go,3000)}' +
+      'else{window.onload=go}})();'
+    w.document.write(
+      `<!doctype html><html lang="th"><head><meta charset="utf-8"><title>${safeName}</title>` +
+      `<style>${css}</style></head><body>` +
       `<div class="tb-print-wrap">${body}${drawingsSvg}</div>` +
-      `<script>window.onload=function(){window.focus();window.print()}</script></body></html>`,
+      `<script>${script}</script></body></html>`,
     )
     w.document.close()
   }
+
+  // Freshest HTML for export: prefer the live editor (covers edits newer than the 1s
+  // debounced `content` mirror), then the mirror, then the last-persisted body.
+  const exportSourceHtml = useCallback(
+    () => editorApi?.getHTML() || content || doc?.content || '<p></p>',
+    [editorApi, content, doc],
+  )
+
+  // Word / Markdown export. The converters are heavy (turndown + html-to-docx), so the
+  // module is code-split and dynamically imported only when the user actually exports —
+  // it never inflates the main editor bundle. Failures surface a non-blocking alert.
+  const handleExportWord = useCallback(async () => {
+    if (!doc || exporting) return
+    setExporting('word')
+    try {
+      const { exportWord } = await import('../lib/export/word')
+      await exportWord(exportSourceHtml(), doc.name)
+    } catch (err) {
+      console.error('[export] Word failed:', err)
+      alert(t('work.exportFailed'))
+    } finally {
+      setExporting(null)
+    }
+  }, [doc, exporting, exportSourceHtml, t])
+
+  const handleExportMarkdown = useCallback(async () => {
+    if (!doc || exporting) return
+    setExporting('md')
+    try {
+      const { exportMarkdown } = await import('../lib/export/markdown')
+      await exportMarkdown(exportSourceHtml(), doc.name)
+    } catch (err) {
+      console.error('[export] Markdown failed:', err)
+      alert(t('work.exportFailed'))
+    } finally {
+      setExporting(null)
+    }
+  }, [doc, exporting, exportSourceHtml, t])
 
   async function submitCreate() {
     if (!newName.trim()) return
@@ -434,7 +561,11 @@ export default function WorkPage() {
         </Link>
         <h1 className="truncate font-heading text-[15px] font-semibold">{project?.name ?? t('work.workPage')}</h1>
         <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[11px] font-medium text-primary">{project?.myRole}</span>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
+          <button onClick={() => setActivityOpen(true)} title={t('work.activity')} aria-label={t('work.activity')}
+            className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5">
+            <Icon.list width={18} height={18} />
+          </button>
           <Link to={`/projects/${id}/settings`} className="grid size-9 place-items-center rounded-lg text-muted hover:bg-ink/5" title={t('common.settings')} aria-label={t('common.settings')}>
             <Icon.invite width={18} height={18} />
           </Link>
@@ -516,15 +647,45 @@ export default function WorkPage() {
                     </span>
                   )}
                 </button>
+                {canEdit && (
+                  <button onClick={() => setCommitOpen(true)} title={t('commit.button')}
+                    className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
+                    aria-label={t('commit.button')}>
+                    <Icon.commit width={17} height={17} />
+                  </button>
+                )}
                 <button onClick={() => setHistoryOpen(true)} title={t('work.versionHistory')}
                   className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
                   aria-label={t('work.versionHistory')}>
                   <Icon.clock width={17} height={17} />
                 </button>
-                <button onClick={exportPdf} title={t('work.exportPdf')}
-                  className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5" aria-label={t('work.exportPdf')}>
-                  <Icon.download width={17} height={17} />
-                </button>
+                <Menu
+                  align="right"
+                  trigger={
+                    <button
+                      title={t('work.export')}
+                      aria-label={t('work.export')}
+                      aria-busy={exporting !== null}
+                      className="grid size-8 place-items-center rounded-lg text-muted hover:bg-ink/5"
+                    >
+                      {exporting !== null ? (
+                        <span className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                      ) : (
+                        <Icon.download width={17} height={17} />
+                      )}
+                    </button>
+                  }
+                >
+                  <MenuItem icon={<Icon.download width={16} height={16} />} onClick={exportPdf}>
+                    {t('work.exportPdf')}
+                  </MenuItem>
+                  <MenuItem icon={<Icon.file width={16} height={16} />} onClick={handleExportWord}>
+                    {t('work.exportWord')}
+                  </MenuItem>
+                  <MenuItem icon={<Icon.file width={16} height={16} />} onClick={handleExportMarkdown}>
+                    {t('work.exportMarkdown')}
+                  </MenuItem>
+                </Menu>
               </div>
               <div className="min-h-0 flex-1 overflow-auto bg-ink/[0.02] p-6">
                 {/* SPEC 1 — width-fit wrapper so the A4 page surface centers without a Card frame. */}
@@ -586,6 +747,14 @@ export default function WorkPage() {
         </Suspense>
       )}
 
+      {/* Project-scoped activity feed (Sprint 4) — reuses useProjectChanges bound to this project */}
+      <ProjectActivityDrawer
+        projectId={id}
+        projectName={project?.name ?? t('work.workPage')}
+        open={activityOpen}
+        onClose={() => setActivityOpen(false)}
+      />
+
       {/* Version history + diff (Phase 4.5) */}
       {selectedId && doc && (
         <HistoryModal
@@ -598,6 +767,48 @@ export default function WorkPage() {
           canEdit={!!canEdit}
           onRestore={restoreRevision}
         />
+      )}
+
+      {/* Commit — manual versioned save with an optional message (git-style). */}
+      <Modal
+        open={commitOpen}
+        onClose={() => setCommitOpen(false)}
+        title={t('commit.title')}
+        width="max-w-md"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCommitOpen(false)}>{t('common.cancel')}</Button>
+            <Button onClick={doCommit} loading={commitRevision.isPending}>
+              <Icon.commit width={16} height={16} /> {t('commit.action')}
+            </Button>
+          </>
+        }
+      >
+        <Field label={t('commit.messageLabel')} htmlFor="commit-msg" optional hint={t('commit.hint')}>
+          <Input
+            id="commit-msg"
+            value={commitMsg}
+            maxLength={120}
+            onChange={(e) => setCommitMsg(e.target.value)}
+            placeholder={t('commit.placeholder')}
+            autoFocus
+            aria-label={t('commit.messageLabel')}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); doCommit() } }}
+          />
+        </Field>
+      </Modal>
+
+      {/* Toast — transient commit confirmation / error. */}
+      {toast && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex justify-center px-4" role="status" aria-live="polite">
+          <div className={cn(
+            'pointer-events-auto flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-body-sm shadow-pop animate-pop',
+            toast.tone === 'success' ? 'border-success/30 bg-add-bg text-add-fg' : 'border-danger/30 bg-del-bg text-del-fg',
+          )}>
+            {toast.tone === 'success' ? <Icon.check width={16} height={16} /> : <Icon.warning width={16} height={16} />}
+            <span>{toast.msg}</span>
+          </div>
+        </div>
       )}
 
       {/* Create file/folder */}
