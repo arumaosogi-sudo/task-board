@@ -38,3 +38,6 @@ coverage/
 
 # Nested clone of this repo (local only)
 Project_task_borad_appvs01/
+
+# Claude agent worktrees (local only)
+.claude/worktrees/
