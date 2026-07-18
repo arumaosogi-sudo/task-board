@@ -106,6 +106,8 @@
     "yourEmail": "อีเมลของคุณ",
     "verifyClickLink": "คลิกลิงก์ใน Email เพื่อเริ่มใช้งาน Task Board",
     "emailResent": "ส่ง Email ใหม่แล้ว",
+    "emailDeliveryFailed": "ขออภัย เราส่งอีเมลไม่สำเร็จในขณะนี้",
+    "emailDeliveryFailedRetry": "กรุณากดส่งอีกครั้ง หรือลองใหม่ในภายหลัง",
     "resendInBtn": "ส่งอีกครั้งได้ใน {{count}}s",
     "resendVerifyEmail": "ส่ง Email ยืนยันอีกครั้ง",
     "wrongEmail": "ใช้ Email ผิด?",

@@ -7,6 +7,7 @@ import { json, urlencoded } from 'express'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
 import { validateAuthSecrets } from './config/validate-secrets'
+import { buildCorsOrigin } from './config/cors'
 import { CollabService } from './collab/collab.service'
 
 /** Parse a comma-separated origin allowlist from env, trimming blanks. */
@@ -58,12 +59,9 @@ async function bootstrap() {
   const allowedOrigins = parseOrigins()
   app.enableCors({
     // Reflect only whitelisted origins; allow same-origin/curl (no Origin header).
-    // `enableCors(options?: any)` gives no contextual type here, so the callback
-    // params are annotated explicitly (matches the `cors` package's CustomOrigin shape).
-    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true)
-      return callback(new Error(`Origin ${origin} not allowed by CORS`), false)
-    },
+    // A disallowed origin is rejected via `(null, false)` (see buildCorsOrigin) so
+    // it gets a clean CORS block instead of a thrown Error → raw 500.
+    origin: buildCorsOrigin(allowedOrigins),
     credentials: true, // allow the refresh cookie to be sent/received
   })
 
