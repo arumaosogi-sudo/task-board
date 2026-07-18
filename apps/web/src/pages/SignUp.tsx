@@ -66,9 +66,18 @@ export default function SignUp() {
       //  - 'verify-email-sent'   → brand-new account
       //  - 'verification-resent' → reclaimed an existing UNVERIFIED account
       //    (backend resent the link + reset the password instead of erroring).
-      const res = await api.post<{ message: string }>('/auth/register', { username, email, password })
+      const res = await api.post<{ message: string; emailDelivery?: 'sent' | 'failed' }>(
+        '/auth/register',
+        { username, email, password },
+      )
       navigate('/verify-email', {
-        state: { email, resent: res.data.message === 'verification-resent' },
+        state: {
+          email,
+          resent: res.data.message === 'verification-resent',
+          // Thread the honest delivery outcome so the pending screen can warn the
+          // user (instead of claiming "sent") when SMTP failed.
+          delivery: res.data.emailDelivery ?? 'sent',
+        },
       })
     } catch (err) {
       const { message, code } = apiError(err)

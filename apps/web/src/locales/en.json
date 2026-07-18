@@ -106,6 +106,8 @@
     "yourEmail": "your email",
     "verifyClickLink": "Click the link in the Email to start using Task Board",
     "emailResent": "Email sent again",
+    "emailDeliveryFailed": "Sorry, we couldn't send the email right now.",
+    "emailDeliveryFailedRetry": "Please tap resend, or try again shortly.",
     "resendInBtn": "Resend in {{count}}s",
     "resendVerifyEmail": "Resend verification Email",
     "wrongEmail": "Wrong Email?",

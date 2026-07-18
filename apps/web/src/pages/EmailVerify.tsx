@@ -65,7 +65,15 @@ function TokenVerify({ token }: { token: string }) {
   )
 }
 
-function VerifyPending({ email, initialResent = false }: { email: string; initialResent?: boolean }) {
+function VerifyPending({
+  email,
+  initialResent = false,
+  initialDelivery = 'sent',
+}: {
+  email: string
+  initialResent?: boolean
+  initialDelivery?: 'sent' | 'failed'
+}) {
   const { t } = useTranslation()
   const navigate = useNavigate()
   const [countdown, setCountdown] = useState(60)
@@ -73,6 +81,9 @@ function VerifyPending({ email, initialResent = false }: { email: string; initia
   // the user gets immediate confirmation the link was sent to an already-known email.
   const [resent, setResent] = useState(initialResent)
   const [error, setError] = useState('')
+  // Honest delivery banner: when the server reports the email could not be sent,
+  // we tell the user plainly and offer retry, instead of pretending it went out.
+  const [deliveryFailed, setDeliveryFailed] = useState(initialDelivery === 'failed')
 
   useEffect(() => {
     if (countdown <= 0) return
@@ -87,10 +98,17 @@ function VerifyPending({ email, initialResent = false }: { email: string; initia
     }
     setError('')
     try {
-      await api.post('/auth/resend-verify', { email })
-      setResent(true)
+      const res = await api.post<{ emailDelivery?: 'sent' | 'failed' }>('/auth/resend-verify', { email })
+      if (res.data.emailDelivery === 'failed') {
+        // Real send failed — keep the honest failure banner up, don't show "resent".
+        setDeliveryFailed(true)
+        setResent(false)
+      } else {
+        setDeliveryFailed(false)
+        setResent(true)
+        setTimeout(() => setResent(false), 3000)
+      }
       setCountdown(60)
-      setTimeout(() => setResent(false), 3000)
     } catch (err) {
       const e = apiError(err)
       // 429 = throttled; surface a friendlier message than the raw API error
@@ -119,7 +137,12 @@ function VerifyPending({ email, initialResent = false }: { email: string; initia
             <p className="text-sm text-muted">{t('auth.verifyClickLink')}</p>
           </div>
 
-          {resent && (
+          {deliveryFailed && (
+            <Banner tone="error">
+              {t('auth.emailDeliveryFailed')} {t('auth.emailDeliveryFailedRetry')}
+            </Banner>
+          )}
+          {resent && !deliveryFailed && (
             <div className="flex items-center gap-2 rounded-xl bg-success/10 px-4 py-2.5 text-[13px] text-success">
               <Icon.check width={14} height={14} /> {t('auth.emailResent')}
             </div>
@@ -148,7 +171,7 @@ export default function EmailVerify() {
   const location = useLocation()
   const token = params.get('token')
 
-  const navState = location.state as { email?: string; resent?: boolean } | null
+  const navState = location.state as { email?: string; resent?: boolean; delivery?: 'sent' | 'failed' } | null
 
   // Persist email so Resend still works after a page refresh (location.state is cleared)
   const stateEmail = navState?.email
@@ -163,6 +186,10 @@ export default function EmailVerify() {
   return token ? (
     <TokenVerify token={token} />
   ) : (
-    <VerifyPending email={email} initialResent={navState?.resent ?? false} />
+    <VerifyPending
+      email={email}
+      initialResent={navState?.resent ?? false}
+      initialDelivery={navState?.delivery ?? 'sent'}
+    />
   )
 }
