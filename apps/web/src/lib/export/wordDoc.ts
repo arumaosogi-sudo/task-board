@@ -284,7 +284,7 @@ interface BlockCtx {
   bullet?: boolean // true=unordered, false=ordered (when listLevel defined)
 }
 
-let h1Seen = false // module-scoped guard reset at the start of every build (buildWordDocument)
+let h1Seen = false // module-scoped guard reset at the start of every build (htmlToBlocks)
 
 function paragraph(el: HTMLElement, opts: Partial<IParagraphOptions>, ctx: BlockCtx): Paragraph {
   const base: IParagraphOptions = {
@@ -328,7 +328,9 @@ function listParagraphs(list: HTMLElement, ordered: boolean, level: number): Par
       new Paragraph({
         children: leadRuns,
         ...(ordered
-          ? { numbering: { reference: OL_REF, level } }
+          // numbering() only defines ilvl 0-3, but nesting recurses unbounded — clamp
+          // so a deeper level still renders (against ilvl 3) instead of losing its number.
+          ? { numbering: { reference: OL_REF, level: Math.min(level, 3) } }
           : { bullet: { level } }),
       }),
     )
@@ -419,9 +421,18 @@ function walkBlock(node: Node, ctx: BlockCtx, out: FileChild[]): void {
     case 'hr':
       out.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: TABLE_BORDER, space: 1 } } }))
       return
-    case 'img':
-      out.push(paragraph(el, {}, ctx))
+    case 'img': {
+      // Bare, block-level <img> (the editor's Image node is inline:false, so
+      // editor.getHTML() emits a top-level <img>; rasterized drawings hit here too).
+      // Must build the ImageRun directly — routing through paragraph() would read the
+      // element's CHILDREN, and <img> is void (zero children) → the image is dropped.
+      const run = imageRun(el)
+      if (run) out.push(new Paragraph({ children: [run], alignment: alignOf(el) }))
       return
+    }
+    case 'script':
+    case 'style':
+      return // never emit the raw text content of script/style elements
     case 'pre': {
       const text = el.textContent ?? ''
       out.push(new Paragraph({ children: [new TextRun(runOpts(text, { code: true }))], shading: { type: ShadingType.CLEAR, fill: CODE_SHADE } }))

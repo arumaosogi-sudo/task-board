@@ -241,6 +241,25 @@ describe('wordDoc — images (SPEC 7)', () => {
     expect(cx).toBeLessThanOrEqual(maxEmu)
     expect(media).toBeTruthy()
   })
+
+  it('embeds a BARE top-level <img> (Image node is inline:false → getHTML emits no <p> wrapper)', async () => {
+    // Regression: the editor's ResizableImage is configured inline:false, so
+    // editor.getHTML() serializes a top-level <img> with NO <p> wrapper (and
+    // rasterized drawings arrive the same way). The block-<img> handler must build
+    // the ImageRun directly — the old code routed through paragraph(), which reads
+    // the element's CHILDREN, and <img> is void → the image was silently dropped.
+    const html = `<img src="data:image/png;base64,${PNG_1x1}">`
+    const buf = await buildWordBuffer(html, 'bare')
+    const zip = await JSZip.loadAsync(buf)
+
+    // Exactly one real media entry — proof the bytes were embedded, not dropped.
+    const mediaFiles = Object.keys(zip.files).filter((p) => p.startsWith('word/media/') && !zip.files[p].dir)
+    expect(mediaFiles.length).toBe(1)
+
+    // And the document references it via a sized drawing (wp:extent).
+    const docXml = await zip.files['word/document.xml'].async('string')
+    expect(docXml).toMatch(/<wp:extent cx="\d+"/)
+  })
 })
 
 describe('wordDoc — pure helpers', () => {
