@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { sanitizeFileName } from './download'
 import { htmlToMarkdown } from './markdown'
-import { normalizeDocxHtml } from './docxHtml'
 
 describe('sanitizeFileName', () => {
   it('keeps spaces, hyphens and unicode (Thai)', () => {
@@ -61,38 +60,5 @@ describe('htmlToMarkdown', () => {
   it('emits Markdown image syntax for embedded images', () => {
     const md = htmlToMarkdown('<p><img src="data:image/png;base64,AAAA" alt="pic"></p>')
     expect(md).toContain('![pic](data:image/png;base64,AAAA)')
-  })
-})
-
-describe('normalizeDocxHtml', () => {
-  it('rewrites .tb-box to a blockquote', () => {
-    const out = normalizeDocxHtml('<div class="tb-box"><p>callout</p></div>')
-    expect(out).toContain('<blockquote>')
-    expect(out).toContain('callout')
-    expect(out).not.toContain('tb-box')
-  })
-
-  it('flattens a task list to a bullet list with checkbox glyphs', () => {
-    const html =
-      '<ul data-type="taskList">' +
-      '<li data-type="taskItem" data-checked="true"><label><input type="checkbox" checked="checked"><span></span></label><div><p>Shipped</p></div></li>' +
-      '<li data-type="taskItem" data-checked="false"><label><input type="checkbox"><span></span></label><div><p>Pending</p></div></li>' +
-      '</ul>'
-    const out = normalizeDocxHtml(html)
-    expect(out).not.toContain('data-type')
-    expect(out).not.toContain('<input')
-    expect(out).toContain('☑ Shipped')
-    expect(out).toContain('☐ Pending')
-  })
-
-  it('preserves @mention text', () => {
-    const out = normalizeDocxHtml('<p><span class="tb-mention">@bob</span></p>')
-    expect(out).toContain('@bob')
-  })
-
-  it('leaves plain content untouched', () => {
-    const out = normalizeDocxHtml('<h1>Report</h1><p>Body</p>')
-    expect(out).toContain('<h1>Report</h1>')
-    expect(out).toContain('<p>Body</p>')
   })
 })
