@@ -33,6 +33,14 @@ const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000 // 1h
  */
 const DUMMY_BCRYPT_HASH = '$2b$12$pBmbtxxtMd3vlQpGcy9OA.yyEd6tVtfnlkTRqPRj3LdqlKrpeVclq'
 
+/**
+ * Honest delivery outcome for the *first* mail attempt tied to a request. The UI
+ * uses it to tell the user whether the verification email actually went out
+ * (`sent`) or the SMTP send failed (`failed`) — instead of always claiming
+ * success. Not surfaced on anti-enumeration flows (forgot-password).
+ */
+export type EmailDelivery = 'sent' | 'failed'
+
 export interface PublicUser {
   id: string
   username: string
@@ -110,7 +118,11 @@ export class AuthService {
 
   /* ------------------------------- register ------------------------------- */
 
-  async register(username: string, email: string, password: string): Promise<{ message: string }> {
+  async register(
+    username: string,
+    email: string,
+    password: string,
+  ): Promise<{ message: string; emailDelivery: EmailDelivery }> {
     const normalizedEmail = email.toLowerCase()
     const byEmail = await this.users.findByEmail(normalizedEmail)
 
@@ -152,8 +164,8 @@ export class AuthService {
       throw err
     }
 
-    await this.sendVerification(user)
-    return { message: 'verify-email-sent' }
+    const emailDelivery = await this.sendVerification(user)
+    return { message: 'verify-email-sent', emailDelivery }
   }
 
   /**
@@ -167,7 +179,7 @@ export class AuthService {
     existing: User,
     username: string,
     password: string,
-  ): Promise<{ message: string }> {
+  ): Promise<{ message: string; emailDelivery: EmailDelivery }> {
     // Validate username now (before we write anything), but don't apply yet.
     let pendingUsername: string | undefined
     if (username && username !== existing.username) {
@@ -182,19 +194,27 @@ export class AuthService {
 
     await this.prisma.emailVerification.deleteMany({ where: { userId: existing.id } })
     // Email is unchanged, so `existing` still carries the right address/id for the mail.
-    await this.sendVerification(existing, { passwordHash: pendingPasswordHash, username: pendingUsername })
-    return { message: 'verification-resent' }
+    const emailDelivery = await this.sendVerification(existing, {
+      passwordHash: pendingPasswordHash,
+      username: pendingUsername,
+    })
+    return { message: 'verification-resent', emailDelivery }
   }
 
+  /**
+   * Persists the verification token then sends the email, returning the honest
+   * delivery outcome. The token row must be written before we respond (the link
+   * depends on it). The mail send is now awaited (bounded retry in MailService)
+   * so we can report `sent`/`failed` to the caller — a failed send no longer
+   * masquerades as success. A `failed` result never blocks registration: the row
+   * exists, the user still reaches the "check your email" screen and can retry
+   * via resend. Delivery failures are also logged server-side.
+   */
   private async sendVerification(
     user: User,
     pending?: { passwordHash?: string; username?: string },
-  ): Promise<void> {
+  ): Promise<EmailDelivery> {
     const raw = generateOpaqueToken()
-    // The token row must be persisted before we respond (the verify link depends on
-    // it), so this stays awaited. The mail itself is fire-and-forget: SMTP latency or
-    // an outage must never block or fail registration — the user still lands on the
-    // "check your email" screen and can hit "resend" if the mail never arrives.
     await this.prisma.emailVerification.create({
       data: {
         userId: user.id,
@@ -204,13 +224,16 @@ export class AuthService {
         ...(pending?.username && { pendingUsername: pending.username }),
       },
     })
-    void this.mail
-      .sendVerificationEmail(user.email, raw)
-      .catch((err) =>
-        this.logger.warn(
-          `Verification email failed for ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+    const ok = await this.mail.sendVerificationEmail(user.email, raw).catch((err) => {
+      // MailService already swallows/retries internally, but guard against an
+      // unexpected throw so a mail bug can never break registration.
+      this.logger.error(
+        `Verification email threw for ${user.email}: ${err instanceof Error ? err.message : String(err)}`,
       )
+      return false
+    })
+    if (!ok) this.logger.warn(`Verification email delivery failed for ${user.email}`)
+    return ok ? 'sent' : 'failed'
   }
 
   /* -------------------------------- login --------------------------------- */
@@ -304,19 +327,25 @@ export class AuthService {
     return { message: 'email-verified' }
   }
 
-  async resendVerify(email: string): Promise<{ message: string }> {
+  async resendVerify(email: string): Promise<{ message: string; emailDelivery: EmailDelivery }> {
     const user = await this.users.findByEmail(email)
     // Don't reveal whether the email exists; also no-op if already verified.
+    // No-op paths report `sent` so the response is indistinguishable from the
+    // real send (anti-enumeration). Whoever actually clicks "resend" already owns
+    // the address (they just registered), so an honest `failed` when a genuine
+    // send breaks is legitimate UX, not a meaningful oracle: an SMTP outage is a
+    // server-wide condition, not a per-account signal.
+    let emailDelivery: EmailDelivery = 'sent'
     if (!user) {
       this.logger.debug(`resendVerify: no account for ${email} — no-op`)
     } else if (user.emailVerified) {
       this.logger.debug(`resendVerify: ${email} already verified — no-op`)
     } else {
       await this.prisma.emailVerification.deleteMany({ where: { userId: user.id } })
-      await this.sendVerification(user)
-      this.logger.log(`resendVerify: verification email queued for ${email}`)
+      emailDelivery = await this.sendVerification(user)
+      this.logger.log(`resendVerify: verification email ${emailDelivery} for ${email}`)
     }
-    return { message: 'verify-email-sent' }
+    return { message: 'verify-email-sent', emailDelivery }
   }
 
   /* ----------------------------- password reset --------------------------- */
@@ -328,7 +357,10 @@ export class AuthService {
       await this.prisma.passwordReset.create({
         data: { userId: user.id, token: hashToken(raw), expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS) },
       })
-      await this.mail.sendPasswordResetEmail(user.email, raw)
+      // Delivery outcome is logged for operators but deliberately NOT surfaced in
+      // the response: revealing "failed" here would leak that the account exists.
+      const ok = await this.mail.sendPasswordResetEmail(user.email, raw).catch(() => false)
+      if (!ok) this.logger.warn(`Password reset email delivery failed for ${user.email}`)
     }
     // Always the same response to avoid account enumeration.
     return { message: 'reset-email-sent' }

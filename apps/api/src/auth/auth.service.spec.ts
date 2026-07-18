@@ -123,9 +123,12 @@ describe('AuthService (P1 auth flow)', () => {
     prisma.refreshToken.delete.mockResolvedValue({ id: 'rt1' })
     prisma.refreshToken.update.mockResolvedValue({ id: 'rt1', familyId: 'fam1' })
 
+    // MailService now returns a delivery boolean (true = accepted by SMTP). Default
+    // the mocks to a successful send; individual tests override to false to prove
+    // the failure is surfaced honestly.
     mail = {
-      sendVerificationEmail: jest.fn().mockResolvedValue(undefined),
-      sendPasswordResetEmail: jest.fn().mockResolvedValue(undefined),
+      sendVerificationEmail: jest.fn().mockResolvedValue(true),
+      sendPasswordResetEmail: jest.fn().mockResolvedValue(true),
     }
     const config = {
       get: jest.fn((key: string, def?: string) => {
@@ -161,7 +164,7 @@ describe('AuthService (P1 auth flow)', () => {
 
       const res = await service.register('bob', 'Bob@X.IO', 'secret123')
 
-      expect(res).toEqual({ message: 'verify-email-sent' })
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
 
       // Password persisted as a real bcrypt hash, not the plaintext.
       const created = lastCall(prisma.user.create) as { data: { passwordHash: string; email: string } }
@@ -206,7 +209,7 @@ describe('AuthService (P1 auth flow)', () => {
 
       const res = await service.register('bob', 'bob@x.io', 'newpass123')
 
-      expect(res).toEqual({ message: 'verification-resent' })
+      expect(res).toEqual({ message: 'verification-resent', emailDelivery: 'sent' })
       // Old verification rows cleared, and the new password is held PENDING (hashed),
       // not applied to the user until they click the link.
       expect(prisma.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u5' } })
@@ -224,6 +227,71 @@ describe('AuthService (P1 auth flow)', () => {
       await expect(service.register('bob', 'bob@x.io', 'secret123')).rejects.toMatchObject({
         response: { code: 'email-taken' },
       })
+    })
+
+    it('reports emailDelivery:"failed" (still creating the account) when the SMTP send fails', async () => {
+      seedUsers([])
+      mail.sendVerificationEmail.mockResolvedValue(false) // SMTP down / rejected
+
+      const res = await service.register('bob', 'bob@x.io', 'secret123')
+
+      // Account + token row still persisted — a failed email must NOT roll back signup.
+      expect(prisma.user.create).toHaveBeenCalledTimes(1)
+      expect(prisma.emailVerification.create).toHaveBeenCalledTimes(1)
+      // ...but the outcome is reported honestly so the UI can warn the user.
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'failed' })
+    })
+
+    it('still succeeds (emailDelivery:"failed") if the mail send throws unexpectedly', async () => {
+      seedUsers([])
+      mail.sendVerificationEmail.mockRejectedValue(new Error('boom'))
+
+      const res = await service.register('bob', 'bob@x.io', 'secret123')
+
+      expect(prisma.user.create).toHaveBeenCalledTimes(1)
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'failed' })
+    })
+  })
+
+  /* ============================= resendVerify ============================= */
+
+  describe('resendVerify', () => {
+    it('resends for an unverified account and reports the delivery outcome', async () => {
+      seedUsers([makeUser({ id: 'u5', email: 'bob@x.io', emailVerified: false })])
+
+      const res = await service.resendVerify('bob@x.io')
+
+      expect(prisma.emailVerification.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u5' } })
+      expect(mail.sendVerificationEmail).toHaveBeenCalledTimes(1)
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
+    })
+
+    it('surfaces emailDelivery:"failed" when the resend send fails', async () => {
+      seedUsers([makeUser({ id: 'u5', email: 'bob@x.io', emailVerified: false })])
+      mail.sendVerificationEmail.mockResolvedValue(false)
+
+      const res = await service.resendVerify('bob@x.io')
+
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'failed' })
+    })
+
+    it('is a no-op reporting emailDelivery:"sent" for an unknown email (no enumeration)', async () => {
+      seedUsers([])
+
+      const res = await service.resendVerify('ghost@x.io')
+
+      expect(mail.sendVerificationEmail).not.toHaveBeenCalled()
+      // No-op path must be indistinguishable from a real send: same message + "sent".
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
+    })
+
+    it('is a no-op reporting emailDelivery:"sent" for an already-verified account', async () => {
+      seedUsers([makeUser({ email: 'done@x.io', emailVerified: true })])
+
+      const res = await service.resendVerify('done@x.io')
+
+      expect(mail.sendVerificationEmail).not.toHaveBeenCalled()
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
     })
   })
 
@@ -532,6 +600,24 @@ describe('AuthService (P1 auth flow)', () => {
       expect(res).toEqual({ message: 'reset-email-sent' })
       expect(prisma.passwordReset.create).not.toHaveBeenCalled()
       expect(mail.sendPasswordResetEmail).not.toHaveBeenCalled()
+    })
+
+    it('returns the SAME generic response even when the reset email fails (no delivery leak)', async () => {
+      seedUsers([makeUser({ email: 'alice@x.io' })])
+      mail.sendPasswordResetEmail.mockResolvedValue(false) // SMTP failed for a real account
+
+      const res = await service.forgotPassword('alice@x.io')
+
+      // Must NOT expose an emailDelivery flag — that would reveal the account exists.
+      expect(res).toEqual({ message: 'reset-email-sent' })
+      expect(res).not.toHaveProperty('emailDelivery')
+    })
+
+    it('does not throw if the reset email send rejects', async () => {
+      seedUsers([makeUser({ email: 'alice@x.io' })])
+      mail.sendPasswordResetEmail.mockRejectedValue(new Error('smtp boom'))
+
+      await expect(service.forgotPassword('alice@x.io')).resolves.toEqual({ message: 'reset-email-sent' })
     })
   })
 
