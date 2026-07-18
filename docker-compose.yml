@@ -43,7 +43,6 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3001
-      COLLAB_PORT: 3002
       # Local stack uses the bundled Postgres; no pooler needed.
       DATABASE_URL: postgresql://taskboard:taskboard@db:5432/taskboard
       DIRECT_URL: postgresql://taskboard:taskboard@db:5432/taskboard
@@ -63,7 +62,6 @@ services:
       EMAIL_FROM: noreply@taskboard.local
     ports:
       - "3001:3001"
-      - "3002:3002"
 
   web:
     build:
@@ -71,7 +69,8 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: http://localhost:3001
-        VITE_COLLAB_URL: ws://localhost:3002
+        # Collab shares the API's own port/server now (see CollabService).
+        VITE_COLLAB_URL: ws://localhost:3001
     restart: unless-stopped
     depends_on:
       api:

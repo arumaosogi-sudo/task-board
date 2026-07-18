@@ -39,7 +39,6 @@ const apiEnv = {
   ...process.env,
   NODE_ENV: 'development',
   PORT: '3001',
-  COLLAB_PORT: '3002',
   DATABASE_URL: TEST_DATABASE_URL,
   DIRECT_URL: TEST_DATABASE_URL,
   WEB_URL,
@@ -57,7 +56,8 @@ const apiEnv = {
 const webEnv = {
   ...process.env,
   VITE_API_URL: API_URL,
-  VITE_COLLAB_URL: 'ws://localhost:3002',
+  // Collab shares the API's own port/server now (see CollabService).
+  VITE_COLLAB_URL: 'ws://localhost:3001',
 }
 
 let apiProc

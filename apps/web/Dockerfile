@@ -11,7 +11,7 @@ FROM node:20-slim@sha256:3d0f05455dea2c82e2f76e7e2543964c30f6b7d673fc1a83286736d
 WORKDIR /app
 # API/collab URLs are baked into the bundle at build time.
 ARG VITE_API_URL=http://localhost:3001
-ARG VITE_COLLAB_URL=ws://localhost:3002
+ARG VITE_COLLAB_URL=ws://localhost:3001
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_COLLAB_URL=$VITE_COLLAB_URL
 

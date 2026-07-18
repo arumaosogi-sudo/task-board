@@ -7,6 +7,7 @@ import { json, urlencoded } from 'express'
 import helmet from 'helmet'
 import { AppModule } from './app.module'
 import { validateAuthSecrets } from './config/validate-secrets'
+import { CollabService } from './collab/collab.service'
 
 /** Parse a comma-separated origin allowlist from env, trimming blanks. */
 function parseOrigins(): string[] {
@@ -82,6 +83,11 @@ async function bootstrap() {
 
   const port = parseInt(process.env.PORT || '3001', 10)
   await app.listen(port)
+
+  // Collab (Hocuspocus) shares this same HTTP server/port — see the class doc
+  // on CollabService for why a second port isn't viable in production.
+  app.get(CollabService).attachToHttpServer(app.getHttpServer())
+
   console.log(`Task Board API running on http://localhost:${port}`)
   console.log(`CORS allowed origins: ${allowedOrigins.join(', ')}`)
 }
