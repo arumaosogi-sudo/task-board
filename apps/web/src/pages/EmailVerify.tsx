@@ -98,16 +98,14 @@ function VerifyPending({
     }
     setError('')
     try {
-      const res = await api.post<{ emailDelivery?: 'sent' | 'failed' }>('/auth/resend-verify', { email })
-      if (res.data.emailDelivery === 'failed') {
-        // Real send failed — keep the honest failure banner up, don't show "resent".
-        setDeliveryFailed(true)
-        setResent(false)
-      } else {
-        setDeliveryFailed(false)
-        setResent(true)
-        setTimeout(() => setResent(false), 3000)
-      }
+      // /auth/resend-verify is deliberately generic (anti-enumeration): it always
+      // reports 'sent', so there's no 'failed' branch to handle here. Unconditionally
+      // show the "resent" confirmation and clear any prior (register-time) delivery
+      // banner. The register path still threads an honest 'failed' via initialDelivery.
+      await api.post('/auth/resend-verify', { email })
+      setDeliveryFailed(false)
+      setResent(true)
+      setTimeout(() => setResent(false), 3000)
       setCountdown(60)
     } catch (err) {
       const e = apiError(err)

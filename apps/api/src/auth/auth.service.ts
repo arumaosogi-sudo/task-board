@@ -329,23 +329,26 @@ export class AuthService {
 
   async resendVerify(email: string): Promise<{ message: string; emailDelivery: EmailDelivery }> {
     const user = await this.users.findByEmail(email)
-    // Don't reveal whether the email exists; also no-op if already verified.
-    // No-op paths report `sent` so the response is indistinguishable from the
-    // real send (anti-enumeration). Whoever actually clicks "resend" already owns
-    // the address (they just registered), so an honest `failed` when a genuine
-    // send breaks is legitimate UX, not a meaningful oracle: an SMTP outage is a
-    // server-wide condition, not a per-account signal.
-    let emailDelivery: EmailDelivery = 'sent'
+    // Fully generic response (anti-enumeration): ALWAYS report `sent`, regardless of
+    // whether the account exists, is already verified, or the SMTP send actually
+    // failed. The no-op paths (unknown / verified) already returned `sent`, so
+    // surfacing a real `failed` only on the exists+unverified path turned an SMTP
+    // outage into an enumeration oracle — an attacker could tell a registered-but-
+    // unverified address apart from an unknown one. We still attempt the send and
+    // log the true outcome server-side (incl. the dev [MAIL-FALLBACK] link); the
+    // caller just never sees it. Mirrors forgotPassword. (register/reclaim keep
+    // their honest flag: the caller there is the just-registered owner and the
+    // response is not an enumeration surface.)
     if (!user) {
       this.logger.debug(`resendVerify: no account for ${email} — no-op`)
     } else if (user.emailVerified) {
       this.logger.debug(`resendVerify: ${email} already verified — no-op`)
     } else {
       await this.prisma.emailVerification.deleteMany({ where: { userId: user.id } })
-      emailDelivery = await this.sendVerification(user)
-      this.logger.log(`resendVerify: verification email ${emailDelivery} for ${email}`)
+      const outcome = await this.sendVerification(user)
+      this.logger.log(`resendVerify: verification email ${outcome} for ${email} (reported as sent)`)
     }
-    return { message: 'verify-email-sent', emailDelivery }
+    return { message: 'verify-email-sent', emailDelivery: 'sent' }
   }
 
   /* ----------------------------- password reset --------------------------- */

@@ -57,7 +57,17 @@ export class MailService implements OnModuleInit {
     const hostRaw = this.config.get<string>('SMTP_HOST')
     this.smtpConfigured = !!hostRaw && hostRaw.trim() !== ''
     this.host = this.smtpConfigured ? (hostRaw as string).trim() : 'localhost'
-    this.port = Number(this.config.get<string>('SMTP_PORT', '1025'))
+    // Guard against a non-numeric / out-of-range SMTP_PORT (e.g. "" or "smtp") —
+    // Number() would yield NaN/0 and silently break outbound mail. Fall back to the
+    // default (1025) with a loud warning so the misconfig is visible in the logs.
+    const portRaw = this.config.get<string>('SMTP_PORT', '1025')
+    const portNum = Number(portRaw)
+    if (!Number.isInteger(portNum) || portNum <= 0 || portNum > 65535) {
+      this.logger.warn(`Invalid SMTP_PORT "${portRaw}" — falling back to 1025`)
+      this.port = 1025
+    } else {
+      this.port = portNum
+    }
     const user = this.config.get<string>('SMTP_USER')
     // Strip whitespace — Gmail App Passwords are sometimes pasted with spaces.
     const pass = (this.config.get<string>('SMTP_PASS') ?? '').replace(/\s/g, '')

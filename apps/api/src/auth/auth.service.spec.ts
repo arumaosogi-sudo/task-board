@@ -266,13 +266,17 @@ describe('AuthService (P1 auth flow)', () => {
       expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
     })
 
-    it('surfaces emailDelivery:"failed" when the resend send fails', async () => {
+    it('reports emailDelivery:"sent" even when the resend send fails (no enumeration oracle)', async () => {
       seedUsers([makeUser({ id: 'u5', email: 'bob@x.io', emailVerified: false })])
       mail.sendVerificationEmail.mockResolvedValue(false)
 
       const res = await service.resendVerify('bob@x.io')
 
-      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'failed' })
+      // Still attempts the send + purges old tokens server-side...
+      expect(mail.sendVerificationEmail).toHaveBeenCalledTimes(1)
+      // ...but the response is generic, so an SMTP outage can't reveal the account
+      // exists (contrast the honest `failed` that register still reports).
+      expect(res).toEqual({ message: 'verify-email-sent', emailDelivery: 'sent' })
     })
 
     it('is a no-op reporting emailDelivery:"sent" for an unknown email (no enumeration)', async () => {
