@@ -45,8 +45,8 @@ COPY apps/api/docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh && chown -R node:node /app
 USER node
 
-# REST API (3001) + Hocuspocus realtime WS (3002).
-EXPOSE 3001 3002
+# REST API + Hocuspocus realtime WS share this one port (see CollabService).
+EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"

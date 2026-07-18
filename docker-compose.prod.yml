@@ -36,7 +36,7 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
-    # Port mappings are inherited from docker-compose.yml (3001, 3002, 8080).
+    # Port mappings are inherited from docker-compose.yml (3001, 8080).
     # If you need different host ports (e.g. put a reverse proxy in front and
     # bind :80/:443 there instead), edit docker-compose.yml directly or add
     # your own `ports:` override here — kept out by default to avoid relying

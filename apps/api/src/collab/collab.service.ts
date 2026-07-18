@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { JwtService } from '@nestjs/jwt'
 import { Role } from '@prisma/client'
@@ -8,7 +8,9 @@ import {
   onLoadDocumentPayload,
   onStoreDocumentPayload,
 } from '@hocuspocus/server'
-import * as net from 'net'
+import type { IncomingMessage, Server as HttpServer } from 'http'
+import type { Socket } from 'net'
+import { WebSocketServer } from 'ws'
 import * as Y from 'yjs'
 import { PrismaService } from '../prisma/prisma.service'
 import { NotificationsService } from '../notifications/notifications.service'
@@ -34,18 +36,24 @@ interface CollabContext {
 /**
  * Phase 4.1 — Real-time collaboration backend (Hocuspocus / Yjs).
  *
- * Runs a dedicated WebSocket server (separate port) inside the Nest lifecycle so
- * it can reuse Nest DI (Prisma, JWT, config). The Yjs binary state is the source
- * of truth while a document is open; it is persisted to `File.ydoc`.
+ * Shares the REST API's own HTTP server/port (see `attachToHttpServer`, called
+ * from main.ts after `app.listen()`) rather than binding a second port. A
+ * second port needs its own public exposure on the host — a second free
+ * Railway domain isn't available, and a raw TCP proxy can't terminate TLS, so
+ * a browser page served over https:// can't open a ws:// connection to it at
+ * all (mixed-content). Sharing the port sidesteps that entirely. It also
+ * reuses Nest DI (Prisma, JWT, config). The Yjs binary state is the source of
+ * truth while a document is open; it is persisted to `File.ydoc`.
  *
  * Security (system rule #1 — never trust the client): every connection is
  * authenticated (JWT) and authorized (project membership) server-side in
  * onAuthenticate before any document data flows. Viewers are forced read-only.
  */
 @Injectable()
-export class CollabService implements OnModuleInit, OnModuleDestroy {
+export class CollabService implements OnModuleDestroy {
   private readonly logger = new Logger(CollabService.name)
   private server?: Hocuspocus
+  private wss?: WebSocketServer
   // Per (fileId:actorId) timestamp of the last Revision notification we fanned out,
   // used to throttle repeated autosaves into one notification per window. In-memory is
   // fine: the collab server is a single process and over-notifying is harmless anyway.
@@ -58,59 +66,33 @@ export class CollabService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    const port = parseInt(this.config.get<string>('COLLAB_PORT', '3002'), 10)
-
-    // Hocuspocus's own listen() doesn't attach an 'error' handler to its internal
-    // httpServer, so a bind failure (e.g. a still-terminating previous deployment
-    // holding the port during a platform restart) throws an *uncaught* exception
-    // that kills the whole process — taking the REST API down with it, not just
-    // collab. Probe the port ourselves first and back off/retry, since the
-    // previous holder is expected to release it shortly on a graceful redeploy.
-    await this.waitForPortAvailable(port)
-
+  /**
+   * Wires Hocuspocus into `httpServer`'s WebSocket upgrade handshake instead of
+   * calling `Hocuspocus#listen()` (which binds its own port). Must run after
+   * the server is already listening (main.ts calls this post-`app.listen()`).
+   */
+  attachToHttpServer(httpServer: HttpServer): void {
     this.server = new Hocuspocus()
     this.server.configure({
-      port,
       // Bind hooks as arrows so `this` stays the service instance.
       onAuthenticate: (data) => this.authenticate(data),
       onLoadDocument: (data) => this.loadDocument(data),
       onStoreDocument: (data) => this.storeDocument(data),
     })
-    await this.server.listen()
-    this.logger.log(`Hocuspocus collaboration server listening on ws://localhost:${port}`)
+
+    this.wss = new WebSocketServer({ noServer: true })
+    httpServer.on('upgrade', (request: IncomingMessage, socket: Socket, head: Buffer) => {
+      this.wss!.handleUpgrade(request, socket, head, (ws) => {
+        this.server!.handleConnection(ws, request)
+      })
+    })
+
+    this.logger.log('Hocuspocus collaboration attached to the API HTTP server (shared port)')
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.server?.destroy()
-  }
-
-  /**
-   * Probes `port` with a throwaway server before handing it to Hocuspocus.
-   * Retries with backoff instead of letting an EADDRINUSE crash the process —
-   * see the comment in onModuleInit for why this is necessary at all. Gives up
-   * (and lets Hocuspocus's own attempt fail loudly) after the deadline so a
-   * genuinely stuck port doesn't hang startup forever.
-   */
-  private async waitForPortAvailable(
-    port: number,
-    { retries = 15, delayMs = 2000 }: { retries?: number; delayMs?: number } = {},
-  ): Promise<void> {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      const available = await new Promise<boolean>((resolve) => {
-        const probe = net.createServer()
-        probe.once('error', () => resolve(false))
-        probe.once('listening', () => probe.close(() => resolve(true)))
-        probe.listen(port, '0.0.0.0')
-      })
-      if (available) return
-      this.logger.warn(
-        `Port ${port} still in use (likely a previous deployment finishing shutdown) — ` +
-          `retry ${attempt}/${retries} in ${delayMs}ms`,
-      )
-      await new Promise((resolve) => setTimeout(resolve, delayMs))
-    }
-    this.logger.error(`Port ${port} still in use after ${retries} retries — attempting to bind anyway`)
+    this.wss?.close()
   }
 
   /* --------------------------- lifecycle hooks ---------------------------- */

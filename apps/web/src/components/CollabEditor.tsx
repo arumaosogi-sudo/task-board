@@ -48,7 +48,7 @@ import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/dr
 import { buildMentionSuggestion } from './editor/mentionSuggestion'
 import type { MentionMember } from './editor/MentionList'
 
-const COLLAB_URL = import.meta.env.VITE_COLLAB_URL || 'ws://localhost:3002'
+const COLLAB_URL = import.meta.env.VITE_COLLAB_URL || 'ws://localhost:3001'
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024 // 3MB — enforced client-side + server-side
 // Raster whitelist mirrors the API (assets.service.ts). SVG drawings are rasterized
 // to PNG before upload, so the doc never carries an <img src="data:image/svg…">.
