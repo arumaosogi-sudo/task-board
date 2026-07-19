@@ -6,8 +6,8 @@
 #     -t task-board-web .
 
 # ---------- build ----------
-# Pinned by digest for reproducible builds (tag node:20-slim as of 2026-04-22).
-FROM node:20-slim@sha256:3d0f05455dea2c82e2f76e7e2543964c30f6b7d673fc1a83286736d44fe4c41c AS build
+# Pinned by digest for reproducible builds (tag node:22-slim as of 2026-07-19).
+FROM node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS build
 WORKDIR /app
 # API/collab URLs are baked into the bundle at build time.
 ARG VITE_API_URL=http://localhost:3001
