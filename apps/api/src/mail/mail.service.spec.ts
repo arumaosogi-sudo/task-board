@@ -236,3 +236,131 @@ describe('MailService — delivery result, retry, health & dev fallback', () => 
     })
   })
 })
+
+// Gmail API (HTTPS) transport mode. Railway trial blackholes SMTP, so when the
+// Gmail OAuth env is configured the service delivers over HTTPS instead. These
+// tests pin transport SELECTION and the non-blocking boot probe; the transport's
+// own HTTP/OAuth/MIME behaviour lives in gmail-api.transport.spec.ts.
+describe('MailService — Gmail API transport mode', () => {
+  let warn: jest.SpyInstance
+  let log: jest.SpyInstance
+  let originalFetch: typeof globalThis.fetch
+
+  beforeEach(() => {
+    warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined)
+    log = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined)
+    jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined)
+    originalFetch = globalThis.fetch
+  })
+  afterEach(() => {
+    jest.restoreAllMocks()
+    globalThis.fetch = originalFetch
+  })
+
+  const gmailEnv = {
+    GMAIL_OAUTH_CLIENT_ID: 'cid',
+    GMAIL_OAUTH_CLIENT_SECRET: 'sec',
+    GMAIL_REFRESH_TOKEN: 'rt',
+  }
+
+  const build = (opts: { sendMail?: jest.Mock; env?: Record<string, string> }) => {
+    // The mocked createTransport backs BOTH the (unused) SMTP transporter and the
+    // stream MIME builder inside GmailApiTransport. In Gmail mode `sendMail` is
+    // only invoked to BUILD the MIME (info.message), never as the delivery channel.
+    const sendMail = opts.sendMail ?? jest.fn().mockResolvedValue({ message: Buffer.from('mime') })
+    ;(nodemailer.createTransport as jest.Mock).mockReturnValue({ sendMail, verify: jest.fn() })
+    const env = opts.env ?? {}
+    const config = { get: jest.fn((key: string, def?: string) => env[key] ?? def) }
+    return { service: new MailService(config as never), sendMail }
+  }
+
+  const okTokenRes = () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ access_token: 'AT', expires_in: 3600 }),
+    text: async () => '',
+  })
+  const okSendRes = () => ({ ok: true, status: 200, text: async () => '' })
+
+  describe('transport selection', () => {
+    it('chooses Gmail API when refresh token + client id/secret are configured', () => {
+      const { service } = build({ env: gmailEnv })
+      expect(service.mailMode).toBe('gmail-api')
+    })
+
+    it('falls back to the GOOGLE_* OAuth credentials for client id/secret', () => {
+      const { service } = build({
+        env: { GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', GMAIL_REFRESH_TOKEN: 'rt' },
+      })
+      expect(service.mailMode).toBe('gmail-api')
+    })
+
+    it('uses SMTP when no Gmail refresh token is present', () => {
+      const { service } = build({ env: { SMTP_HOST: 'smtp.example.com' } })
+      expect(service.mailMode).toBe('smtp')
+    })
+
+    it('uses SMTP when the refresh token is set but client credentials are missing', () => {
+      const { service } = build({ env: { GMAIL_REFRESH_TOKEN: 'rt' } })
+      expect(service.mailMode).toBe('smtp')
+    })
+  })
+
+  describe('delivery routing', () => {
+    it('delivers over HTTPS (Gmail send endpoint), building the MIME exactly once', async () => {
+      const fetch = jest.fn().mockResolvedValueOnce(okTokenRes()).mockResolvedValueOnce(okSendRes())
+      globalThis.fetch = fetch as never
+      const { service, sendMail } = build({ env: gmailEnv })
+
+      await expect(service.sendVerificationEmail('a@x.io', 'tok')).resolves.toBe(true)
+
+      // 1 fetch to refresh the token, 1 to POST the message.
+      expect(fetch).toHaveBeenCalledTimes(2)
+      expect(String(fetch.mock.calls[1][0])).toContain('messages/send')
+      // MIME built once (outside the retry loop), not re-sent via SMTP.
+      expect(sendMail).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns false when the Gmail send is permanently rejected (403)', async () => {
+      const fetch = jest
+        .fn()
+        .mockResolvedValueOnce(okTokenRes())
+        .mockResolvedValueOnce({ ok: false, status: 403, text: async () => '{"error":"forbidden"}' })
+      globalThis.fetch = fetch as never
+      const { service } = build({ env: gmailEnv })
+
+      await expect(service.sendPasswordResetEmail('a@x.io', 'tok')).resolves.toBe(false)
+      // token + one send attempt; 403 is permanent → no retry.
+      expect(fetch).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('boot probe', () => {
+    it('never blocks boot: onModuleInit returns synchronously even if the token fetch hangs', () => {
+      globalThis.fetch = jest.fn().mockReturnValue(new Promise(() => {})) as never
+      const { service } = build({ env: gmailEnv })
+
+      expect(service.onModuleInit()).toBeUndefined()
+      expect(globalThis.fetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('logs OK when the boot token refresh succeeds', async () => {
+      globalThis.fetch = jest.fn().mockResolvedValue(okTokenRes()) as never
+      const { service } = build({ env: gmailEnv })
+
+      await service.verifyGmail()
+
+      expect(log.mock.calls.some((c) => String(c[0]).includes('Gmail API verify OK'))).toBe(true)
+    })
+
+    it('logs a non-fatal FAIL (does not throw) when the boot refresh is rejected', async () => {
+      globalThis.fetch = jest
+        .fn()
+        .mockResolvedValue({ ok: false, status: 400, text: async () => '{"error":"invalid_grant"}' }) as never
+      const { service } = build({ env: gmailEnv })
+
+      await expect(service.verifyGmail()).resolves.toBeUndefined()
+      expect(warn.mock.calls.some((c) => String(c[0]).includes('Gmail API verify FAILED'))).toBe(true)
+    })
+  })
+})

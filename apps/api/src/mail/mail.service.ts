@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import * as nodemailer from 'nodemailer'
+import { GmailApiTransport } from './gmail-api.transport'
 
 /**
  * Escape the 5 HTML-significant characters so user-controlled values (e.g. a
@@ -25,7 +26,17 @@ export function escapeHtml(value: string): string {
  * the backoff budget.
  */
 export function isTransientMailError(err: unknown): boolean {
-  const e = err as { code?: string; responseCode?: number } | null
+  const e = err as { code?: string; responseCode?: number; httpStatus?: number } | null
+  // Gmail API (HTTPS) errors carry an `httpStatus`. HTTP semantics are the
+  // INVERSE of SMTP: 429 (rate-limit) and 5xx (server) are worth retrying, while
+  // 4xx (400 bad request, 401 unauthenticated, 403 forbidden) are permanent —
+  // a revoked token or bad scope will fail identically on every retry.
+  const http = e?.httpStatus
+  if (typeof http === 'number') {
+    return http === 429 || (http >= 500 && http < 600)
+  }
+  // Network/abort errors from the Gmail fetch (AbortError, fetch TypeError) have
+  // no httpStatus and fall through to `return true` below — treated as transient.
   const code = e?.code ?? ''
   const rc = e?.responseCode
   if (code === 'EAUTH' || code === 'EENVELOPE' || code === 'EMESSAGE') return false
@@ -45,6 +56,16 @@ export class MailService implements OnModuleInit {
   private readonly isProd: boolean
   /** True when a real SMTP host was configured (vs. relying on the localhost default). */
   private readonly smtpConfigured: boolean
+  /**
+   * Primary delivery over the Gmail API (HTTPS) instead of SMTP. Set when the
+   * Gmail OAuth env is fully configured; otherwise null and we use SMTP. See
+   * `mailMode` for the resolved choice.
+   */
+  private readonly gmail: GmailApiTransport | null
+  /** Which channel actually delivers mail — exposed for observability/tests. */
+  readonly mailMode: 'gmail-api' | 'smtp'
+  /** True when *some* real transport is configured (SMTP host or Gmail API). */
+  private readonly mailConfigured: boolean
   /** 1 initial attempt + this many retries. */
   private readonly maxAttempts = 3
   private readonly baseBackoffMs = 200
@@ -86,6 +107,38 @@ export class MailService implements OnModuleInit {
       greetingTimeout: 5_000,
       socketTimeout: 15_000,
     })
+
+    // Gmail API (HTTPS) transport — the primary delivery path when configured.
+    // Rationale: Railway trial blackholes SMTP; HTTPS egress is never blocked
+    // (ADR 0009). Client id/secret fall back to the existing GOOGLE_* OAuth
+    // credentials so the owner can reuse one OAuth client and only add a
+    // GMAIL_REFRESH_TOKEN. Gmail mode activates only when all three are present.
+    const gClientId = (
+      this.config.get<string>('GMAIL_OAUTH_CLIENT_ID') ??
+      this.config.get<string>('GOOGLE_CLIENT_ID') ??
+      ''
+    ).trim()
+    const gClientSecret = (
+      this.config.get<string>('GMAIL_OAUTH_CLIENT_SECRET') ??
+      this.config.get<string>('GOOGLE_CLIENT_SECRET') ??
+      ''
+    ).trim()
+    const gRefreshToken = (this.config.get<string>('GMAIL_REFRESH_TOKEN') ?? '').trim()
+
+    if (gClientId && gClientSecret && gRefreshToken) {
+      this.gmail = new GmailApiTransport({
+        clientId: gClientId,
+        clientSecret: gClientSecret,
+        refreshToken: gRefreshToken,
+        logger: this.logger,
+      })
+      this.mailMode = 'gmail-api'
+      this.logger.log('Mail transport: Gmail API (HTTPS) — primary delivery path')
+    } else {
+      this.gmail = null
+      this.mailMode = 'smtp'
+    }
+    this.mailConfigured = this.mailMode === 'gmail-api' || this.smtpConfigured
   }
 
   /**
@@ -96,11 +149,32 @@ export class MailService implements OnModuleInit {
    */
   onModuleInit(): void {
     // Fire-and-forget: NestJS awaits onModuleInit hooks before app.listen(), so
-    // awaiting a network probe here lets an unreachable SMTP host (e.g. a PaaS
-    // that blackholes outbound SMTP) stall the entire API boot — the process
-    // loads, never binds the port, and the platform reports 502. The probe is
-    // purely informational; run it in the background instead.
-    void this.verifyTransport()
+    // awaiting a network probe here lets an unreachable host (e.g. a PaaS that
+    // blackholes outbound SMTP) stall the entire API boot — the process loads,
+    // never binds the port, and the platform reports 502. The probe is purely
+    // informational; run it in the background instead.
+    if (this.gmail) {
+      void this.verifyGmail()
+    } else {
+      void this.verifyTransport()
+    }
+  }
+
+  /**
+   * Boot-time probe for the Gmail API path — refreshes the access token to prove
+   * the OAuth credentials still work. Same fire-and-forget contract as
+   * `verifyTransport`: it must NEVER be awaited during boot. No secrets logged.
+   */
+  async verifyGmail(): Promise<void> {
+    try {
+      await this.gmail!.refreshAccessToken()
+      this.logger.log('Gmail API verify OK — access token obtained')
+    } catch (err) {
+      this.logger.warn(
+        `Gmail API verify FAILED: ${err instanceof Error ? err.message : String(err)}` +
+          (this.isProd ? '' : ' (dev: verification/reset links will be logged as a fallback)'),
+      )
+    }
   }
 
   /** Boot-time probe body — awaitable directly in tests. */
@@ -169,7 +243,7 @@ export class MailService implements OnModuleInit {
     content: { html: string; text: string },
   ): Promise<boolean> {
     const ok = await this.deliver(to, subject, content)
-    if (!this.isProd && (!this.smtpConfigured || !ok)) {
+    if (!this.isProd && (!this.mailConfigured || !ok)) {
       // Marked, greppable, dev-only. Lets a developer complete the flow by hand
       // when no SMTP server is reachable. Guarded by isProd — never leaks links
       // into production logs.
@@ -178,18 +252,84 @@ export class MailService implements OnModuleInit {
     return ok
   }
 
+  /** Common headers applied to every outbound message, regardless of transport. */
+  private commonHeaders(): Record<string, string> {
+    return { 'List-Unsubscribe': `<mailto:${this.from}?subject=unsubscribe>` }
+  }
+
   private async deliver(to: string, subject: string, content: { html: string; text: string }): Promise<boolean> {
+    if (this.gmail) {
+      return this.deliverViaGmail(to, subject, content)
+    }
+    return this.deliverViaSmtp(to, subject, content)
+  }
+
+  /**
+   * Gmail API path. The RFC822 MIME is built once (outside the retry loop, so a
+   * transient send failure never rebuilds it) and re-POSTed on each attempt. A
+   * MIME-build failure is permanent (bad input, not the network) → no retry.
+   */
+  private async deliverViaGmail(
+    to: string,
+    subject: string,
+    content: { html: string; text: string },
+  ): Promise<boolean> {
+    let raw: Buffer
+    try {
+      raw = await this.gmail!.buildRawMessage({
+        from: this.from,
+        to,
+        subject,
+        html: content.html,
+        text: content.text,
+        headers: this.commonHeaders(),
+      })
+    } catch (err) {
+      this.logger.error(
+        `Failed to build MIME for "${subject}" to ${to}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      )
+      return false
+    }
+    return this.runWithRetry(subject, to, async () => {
+      await this.gmail!.sendRaw(raw)
+      this.logger.log(`Sent "${subject}" to ${to} [gmail-api]`)
+    })
+  }
+
+  /** SMTP path — unchanged behaviour from the original transporter-based send. */
+  private deliverViaSmtp(
+    to: string,
+    subject: string,
+    content: { html: string; text: string },
+  ): Promise<boolean> {
+    return this.runWithRetry(subject, to, async () => {
+      const info = await this.transporter.sendMail({
+        from: this.from,
+        to,
+        subject,
+        html: content.html,
+        text: content.text,
+        headers: this.commonHeaders(),
+      })
+      this.logger.log(`Sent "${subject}" to ${to} [${info.messageId}]`)
+    })
+  }
+
+  /**
+   * Shared bounded-retry loop for both transports. `sendOnce` performs one
+   * delivery attempt (and logs its own success line); this loop owns transient-vs-
+   * permanent classification, backoff, and the final error log. Returns whether
+   * the message was ultimately accepted.
+   */
+  private async runWithRetry(
+    subject: string,
+    to: string,
+    sendOnce: () => Promise<void>,
+  ): Promise<boolean> {
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       try {
-        const info = await this.transporter.sendMail({
-          from: this.from,
-          to,
-          subject,
-          html: content.html,
-          text: content.text,
-          headers: { 'List-Unsubscribe': `<mailto:${this.from}?subject=unsubscribe>` },
-        })
-        this.logger.log(`Sent "${subject}" to ${to} [${info.messageId}]`)
+        await sendOnce()
         return true
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
