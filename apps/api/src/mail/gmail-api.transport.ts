@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common'
 import * as nodemailer from 'nodemailer'
 
 /**
@@ -33,7 +32,6 @@ export interface GmailApiTransportOptions {
   fetchTimeoutMs?: number
   /** Injectable clock (ms epoch) — lets tests exercise token-cache expiry. */
   now?: () => number
-  logger?: Pick<Logger, 'log' | 'warn' | 'error'>
 }
 
 /** The fields the caller hands us to turn into an RFC822 message. */
@@ -68,7 +66,6 @@ export class GmailApiTransport {
   private readonly refreshToken: string
   private readonly fetchTimeoutMs: number
   private readonly now: () => number
-  private readonly logger: Pick<Logger, 'log' | 'warn' | 'error'>
 
   /** In-memory access-token cache (never persisted — a restart just re-refreshes). */
   private accessToken: string | null = null
@@ -82,7 +79,6 @@ export class GmailApiTransport {
     this.refreshToken = opts.refreshToken
     this.fetchTimeoutMs = opts.fetchTimeoutMs ?? DEFAULT_FETCH_TIMEOUT_MS
     this.now = opts.now ?? (() => Date.now())
-    this.logger = opts.logger ?? new Logger(GmailApiTransport.name)
   }
 
   /**
