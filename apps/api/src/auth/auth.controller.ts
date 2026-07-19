@@ -47,7 +47,16 @@ export class AuthController {
     const isProd = this.config.get<string>('NODE_ENV') === 'production'
     return {
       httpOnly: true,
-      sameSite: 'strict',
+      // In production the web and API are served from different registrable
+      // sites (e.g. task-boardweb-*.up.railway.app → task-boardapi-*.up.railway.app;
+      // up.railway.app is on the Public Suffix List, so sibling subdomains are
+      // cross-site). Browsers silently drop a SameSite=Strict/Lax cookie on
+      // cross-site XHR, so /auth/refresh never receives it — every page reload
+      // logs the user out. Cross-site cookies require SameSite=None + Secure;
+      // CSRF exposure is mitigated by the CORS allowlist (credentialed responses
+      // are only readable from allowed origins) and refresh-token rotation.
+      // Local dev stays Strict (localhost:5173 → localhost:3001 is same-site).
+      sameSite: isProd ? 'none' : 'strict',
       secure: isProd,
       path: '/',
       maxAge: this.auth.refreshTtlMs,
