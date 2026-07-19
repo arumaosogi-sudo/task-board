@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { WebSocket as WsWebSocket } from 'ws'
 
 /**
  * Sanitize an env value pasted through a hosting dashboard (Railway, etc.). Those
@@ -155,6 +156,14 @@ export class SupabaseStorageService implements OnModuleInit {
         new URL(url)
         this.client = createClient(url, key, {
           auth: { persistSession: false, autoRefreshToken: false },
+          // supabase-js v2.5x's realtime client requires a WebSocket constructor
+          // at createClient() time and THROWS on Node <22 ("native WebSocket not
+          // found") — this took image uploads down on prod, whose image ran
+          // Node 20 (local dev on Node 24 never saw it). We only use Storage,
+          // but the realtime client is constructed unconditionally, so hand it
+          // the `ws` implementation the API already depends on. Keep this even
+          // after the Node 22 image bump — it makes the service Node-agnostic.
+          realtime: { transport: WsWebSocket as unknown as new (...args: unknown[]) => WebSocket },
         })
       } catch (err) {
         // Log the REAL underlying error server-side for diagnosis. The URL is not

@@ -3,10 +3,12 @@
 #   docker build -f apps/api/Dockerfile -t task-board-api .
 
 # ---------- base ----------
-# Pinned by digest for reproducible builds (tag node:20-slim as of 2026-04-22).
-# To refresh: check the current digest for the `20-slim` tag on Docker Hub and
+# Pinned by digest for reproducible builds (tag node:22-slim as of 2026-07-19).
+# Node 22+ is required: supabase-js needs native WebSocket (Node 20 threw
+# "native WebSocket not found" at createClient, breaking image uploads in prod).
+# To refresh: check the current digest for the `22-slim` tag on Docker Hub and
 # update both the FROM line and this comment together.
-FROM node:20-slim@sha256:3d0f05455dea2c82e2f76e7e2543964c30f6b7d673fc1a83286736d44fe4c41c AS base
+FROM node:22-slim@sha256:6c74791e557ce11fc957704f6d4fe134a7bc8d6f5ca4403205b2966bd488f6b3 AS base
 WORKDIR /app
 # Prisma query engine needs OpenSSL at build and runtime.
 RUN apt-get update -y && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
