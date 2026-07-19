@@ -70,7 +70,7 @@ npm run dev
 npm run lint        # ตรวจโค้ด — ควรผ่านไม่มี error
 npm run typecheck   # ตรวจ type — ควรผ่านทั้ง 3 workspace
 npm run build       # build จริง — ควรผ่านทั้ง 3 workspace
-npm test            # รันเทสต์ — ควรผ่าน ~150 เทสต์
+npm test            # รันเทสต์ — ควรผ่าน ~356 เทสต์ (api + web)
 ```
 
 ถ้าอยากรัน integration test ที่แตะฐานข้อมูลจริง (ต้องมี Docker):

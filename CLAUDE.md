@@ -26,7 +26,7 @@ Run from the repo root (npm workspaces + Turborepo drive everything):
 
 ```bash
 npm install                # install all 3 workspaces
-npm run dev                 # turbo dev: api (:3001) + collab WS (:3002) + web (:5173) together
+npm run dev                 # turbo dev: api + collab WS (both :3001, shared server) + web (:5173) together
 npm run typecheck           # tsc --noEmit across api, web, packages/shared
 npm run build                # tsc (api) + vite build (web)
 npm run lint                 # currently a no-op placeholder in every workspace (`echo "lint ok"`) — do not assume real linting runs
@@ -56,7 +56,7 @@ docker compose up --build          # full stack: db + mailpit + api + web
 
 ```
 Browser (SPA) ──REST + cookie──▶ api (NestJS, :3001)
-              ──WebSocket (Yjs)─▶ Hocuspocus collab WS (:3002, same process as api)
+              ──WebSocket (Yjs)─▶ Hocuspocus collab WS (:3001, shares the api HTTP server)
                                         │
                                         ▼
                                PostgreSQL (Prisma)

@@ -174,7 +174,7 @@ RUN chmod +x /app/docker-entrypoint.sh \
     && chown -R node:node /app
 USER node
 
-EXPOSE 3001 3002
+EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
@@ -425,7 +425,7 @@ generate ค่าที่ผิด (เช่น domain ผิด, Google call
    ไม่มี TLS termination ในนั้น (สมมติว่ามี reverse proxy/LB ชั้นหน้าจัดการ TLS ให้ —
    ต้องยืนยัน)
 3. **Scale เดี่ยวหรือหลาย replica?** ผลต่อ pattern ของ migration-on-boot (§7) และว่าจะ
-   ต้อง sticky-session สำหรับ WebSocket (Hocuspocus :3002) หรือไม่ถ้ามีมากกว่า 1 instance
+   ต้อง sticky-session สำหรับ WebSocket (Hocuspocus บนพอร์ต :3001 ร่วมกับ api) หรือไม่ถ้ามีมากกว่า 1 instance
 4. **Log/metrics aggregation** ต้องการไหม? ตอนนี้ log เป็น `console.log`/Nest Logger
    ธรรมดา ไม่มี structured JSON logging หรือส่งไป log aggregator — ยังไม่ระบุใน scope
    รอบนี้ (prompt ไม่ได้ขอ) แต่ควรเป็น sprint ถัดไปถ้า prod จริงจัง
