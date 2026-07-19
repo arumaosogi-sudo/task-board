@@ -38,7 +38,7 @@ const CommentsPanel = lazy(() =>
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
-// Isolates editor crashes (a thrown render in CollabEditor / DrawingCanvas / any lazy
+// Isolates editor crashes (a thrown render in CollabEditor / DrawingOverlay / any lazy
 // chunk) so a failure paints an inline recoverable panel instead of unmounting the whole
 // WorkPage and leaving a blank/black screen. The "try again" button clears the error and
 // re-attempts the current doc.
