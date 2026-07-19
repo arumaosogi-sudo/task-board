@@ -79,6 +79,12 @@ export class MailService implements OnModuleInit {
       port: this.port,
       secure: this.config.get<string>('SMTP_SECURE') === 'true',
       auth: user ? { user, pass } : undefined,
+      // Bounded timeouts: some hosts (e.g. Railway trial) silently drop outbound
+      // SMTP packets, so without these a connect attempt hangs for nodemailer's
+      // 2-minute default and every send (and the boot verify) stalls with it.
+      connectionTimeout: 5_000,
+      greetingTimeout: 5_000,
+      socketTimeout: 15_000,
     })
   }
 
@@ -88,7 +94,17 @@ export class MailService implements OnModuleInit {
    * than crashing). We log a single, clear OK/FAIL line naming the host so an
    * operator sees at a glance whether outbound mail will work. No secrets logged.
    */
-  async onModuleInit(): Promise<void> {
+  onModuleInit(): void {
+    // Fire-and-forget: NestJS awaits onModuleInit hooks before app.listen(), so
+    // awaiting a network probe here lets an unreachable SMTP host (e.g. a PaaS
+    // that blackholes outbound SMTP) stall the entire API boot — the process
+    // loads, never binds the port, and the platform reports 502. The probe is
+    // purely informational; run it in the background instead.
+    void this.verifyTransport()
+  }
+
+  /** Boot-time probe body — awaitable directly in tests. */
+  async verifyTransport(): Promise<void> {
     try {
       await this.transporter.verify()
       this.logger.log(`SMTP verify OK → ${this.host}:${this.port}`)

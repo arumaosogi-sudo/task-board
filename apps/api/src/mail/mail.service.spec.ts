@@ -205,12 +205,12 @@ describe('MailService — delivery result, retry, health & dev fallback', () => 
     })
   })
 
-  describe('onModuleInit health probe', () => {
+  describe('boot health probe', () => {
     it('logs OK when transporter.verify() succeeds', async () => {
       const verify = jest.fn().mockResolvedValue(true)
       const { service } = build({ verify, env: { SMTP_HOST: 'smtp.example.com', SMTP_PORT: '465' } })
 
-      await service.onModuleInit()
+      await service.verifyTransport()
 
       expect(verify).toHaveBeenCalledTimes(1)
       expect(log.mock.calls.some((c) => String(c[0]).includes('SMTP verify OK → smtp.example.com:465'))).toBe(true)
@@ -220,8 +220,19 @@ describe('MailService — delivery result, retry, health & dev fallback', () => 
       const verify = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'))
       const { service } = build({ verify, env: { SMTP_HOST: 'smtp.example.com' } })
 
-      await expect(service.onModuleInit()).resolves.toBeUndefined()
+      await expect(service.verifyTransport()).resolves.toBeUndefined()
       expect(warn.mock.calls.some((c) => String(c[0]).includes('SMTP verify FAILED'))).toBe(true)
+    })
+
+    it('onModuleInit never blocks boot: returns synchronously even if verify() hangs forever', () => {
+      // A blackholed SMTP host (packets dropped, no RST) makes verify() a promise
+      // that neither resolves nor rejects for minutes. Boot must not await it —
+      // this is the exact failure that 502'd the Railway deploy.
+      const verify = jest.fn().mockReturnValue(new Promise(() => {}))
+      const { service } = build({ verify, env: { SMTP_HOST: 'smtp.example.com' } })
+
+      expect(service.onModuleInit()).toBeUndefined()
+      expect(verify).toHaveBeenCalledTimes(1)
     })
   })
 })
