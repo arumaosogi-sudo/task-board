@@ -29,6 +29,9 @@ function TokenVerify({ token }: { token: string }) {
         setState('error')
       }
     })()
+    // `t` is read only in the catch branch for an error string; re-running this
+    // one-shot verify POST because the UI language changed would be incorrect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   return (

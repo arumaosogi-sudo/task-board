@@ -23,9 +23,13 @@ const linkRow = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('ShareService', () => {
-  let prisma: any
-  let storage: any
-  let config: any
+  let prisma: {
+    file: { findFirst: jest.Mock }
+    shareLink: { create: jest.Mock; findMany: jest.Mock; findFirst: jest.Mock; update: jest.Mock }
+    fileAsset: { findMany: jest.Mock; findFirst: jest.Mock }
+  }
+  let storage: { download: jest.Mock }
+  let config: { get: jest.Mock }
   let service: ShareService
 
   beforeEach(() => {
@@ -41,7 +45,11 @@ describe('ShareService', () => {
     }
     storage = { download: jest.fn() }
     config = { get: jest.fn().mockReturnValue('http://localhost:5173') }
-    service = new ShareService(prisma, storage, config)
+    service = new ShareService(
+      prisma as unknown as ConstructorParameters<typeof ShareService>[0],
+      storage as unknown as ConstructorParameters<typeof ShareService>[1],
+      config as unknown as ConstructorParameters<typeof ShareService>[2],
+    )
   })
 
   describe('create', () => {

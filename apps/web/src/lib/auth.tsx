@@ -79,6 +79,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (login, bootstrap, or a settings update that calls refreshMe).
   useEffect(() => {
     applyUserSetting(user?.setting)
+    // Intentionally keyed on the specific fields we apply, not the whole `user?.setting`
+    // object — depending on the object would re-run on unrelated setting changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.setting?.themeColor, user?.setting?.themeMode, user?.setting?.language])
 
   const login = useCallback(async (identity: string, password: string): Promise<AuthUser> => {
@@ -109,6 +112,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   )
 }
 
+// The hook is co-located with its provider by design (standard React context pattern);
+// splitting it out just to satisfy Fast Refresh would fragment the auth module.
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('useAuth must be used within <AuthProvider>')

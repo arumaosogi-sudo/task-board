@@ -44,6 +44,9 @@ export default function AcceptInvite() {
         setState('error')
       }
     })()
+    // `t` is read only for error/label strings; re-running this accept-invite POST
+    // because the UI language changed would be incorrect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initializing, user, token])
 
   const back = `/accept-invite?token=${encodeURIComponent(token)}`

@@ -6,7 +6,12 @@ import { ProjectsService } from './projects.service'
 // transaction as the role swap — no window where a link outlives its creator's Owner
 // status.
 describe('ProjectsService.transferOwnership — share-link auto-revoke', () => {
-  let prisma: any
+  let prisma: {
+    membership: { findUnique: jest.Mock; update: jest.Mock }
+    project: { update: jest.Mock; findUnique: jest.Mock }
+    shareLink: { updateMany: jest.Mock }
+    $transaction: jest.Mock
+  }
   let service: ProjectsService
 
   beforeEach(() => {
@@ -26,7 +31,12 @@ describe('ProjectsService.transferOwnership — share-link auto-revoke', () => {
       shareLink: { updateMany: jest.fn((args: unknown) => args) },
       $transaction: jest.fn().mockResolvedValue([]),
     }
-    service = new ProjectsService(prisma, {} as never, {} as never, {} as never)
+    service = new ProjectsService(
+      prisma as unknown as ConstructorParameters<typeof ProjectsService>[0],
+      {} as never,
+      {} as never,
+      {} as never,
+    )
   })
 
   it('includes a scoped shareLink.updateMany in the transfer transaction', async () => {
