@@ -232,7 +232,16 @@
     "uploading": "กำลังอัปโหลดรูปภาพ…",
     "uploadFailed": "อัปโหลดไม่สำเร็จ",
     "retry": "ลองใหม่",
-    "dismiss": "ลบ"
+    "dismiss": "ลบ",
+    "imageLayout": {
+      "label": "ตำแหน่งรูปภาพ",
+      "inline": "อยู่ในบรรทัดข้อความ",
+      "blockLeft": "ชิดซ้าย",
+      "blockCenter": "กึ่งกลาง",
+      "blockRight": "ชิดขวา",
+      "wrapLeft": "ข้อความล้อมรอบ (รูปอยู่ซ้าย)",
+      "wrapRight": "ข้อความล้อมรอบ (รูปอยู่ขวา)"
+    }
   },
   "mentions": {
     "listLabel": "สมาชิกที่แนะนำ",

@@ -6,6 +6,7 @@
 import Image from '@tiptap/extension-image'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ResizableImageView } from './ResizableImageView'
+import { isImageLayout, DEFAULT_IMAGE_LAYOUT } from './imageLayout'
 
 export const ResizableImage = Image.extend({
   // Google Docs-style inline reposition: let ProseMirror own the drag. With
@@ -21,6 +22,22 @@ export const ResizableImage = Image.extend({
         default: null,
         parseHTML: (el) => el.getAttribute('width'),
         renderHTML: (attrs) => (attrs.width ? { width: attrs.width } : {}),
+      },
+      // Google-Docs-style positioning. Serialized to `data-layout` so it round-trips
+      // through File.content mirror + getHTML() + Word/PDF export. Absent attr → inline,
+      // which keeps every existing document byte-identical (backward compatible). The
+      // value rides the node attrs, so Yjs syncs it to every collab peer for free.
+      layout: {
+        default: DEFAULT_IMAGE_LAYOUT,
+        parseHTML: (el) => {
+          const v = el.getAttribute('data-layout')
+          return isImageLayout(v) ? v : DEFAULT_IMAGE_LAYOUT
+        },
+        // Only emit the attr for non-default layouts — inline images stay clean HTML.
+        renderHTML: (attrs) =>
+          attrs.layout && attrs.layout !== DEFAULT_IMAGE_LAYOUT
+            ? { 'data-layout': attrs.layout }
+            : {},
       },
     }
   },
