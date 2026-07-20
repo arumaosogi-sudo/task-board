@@ -37,16 +37,30 @@ function RouteFallback() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<RouteFallback />}>
-        <Routes>
-          {/* Public share viewer (ADR 0006): mounted OUTSIDE AuthProvider so the anonymous
-              page never bootstraps a session, sends the refresh cookie, or fetches any
-              authenticated data. Everything else stays inside AuthProvider. */}
-          <Route path="/share/:token" element={<PublicSharePage />} />
-          <Route
-            path="*"
-            element={
-              <AuthProvider>
+      <Routes>
+        {/* Public share viewer (ADR 0006): mounted OUTSIDE AuthProvider so the anonymous
+            page never bootstraps a session, sends the refresh cookie, or fetches any
+            authenticated data. Its own Suspense keeps the lazy chunk isolated to this
+            anonymous route. Everything else stays inside AuthProvider. */}
+        <Route
+          path="/share/:token"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <PublicSharePage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="*"
+          element={
+            <AuthProvider>
+              {/* Suspense sits INSIDE AuthProvider so a route-chunk fallback flash only
+                  swaps the page area — it never unmounts/remounts AuthProvider. With the
+                  boundary above AuthProvider (its previous position), the first navigation
+                  to any not-yet-cached lazy route made React unmount the whole subtree
+                  under the boundary and remount on resolve, needlessly re-running the auth
+                  mount bootstrap (bootstrapSession → refresh rotation + /auth/me). */}
+              <Suspense fallback={<RouteFallback />}>
                 <Routes>
                   <Route path="/" element={<Login />} />
                   <Route path="/login" element={<Login />} />
@@ -68,11 +82,11 @@ export default function App() {
                   <Route path="/projects/:id/settings" element={<ProtectedRoute><ProjectSettings /></ProtectedRoute>} />
                   <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
-              </AuthProvider>
-            }
-          />
-        </Routes>
-      </Suspense>
+              </Suspense>
+            </AuthProvider>
+          }
+        />
+      </Routes>
     </BrowserRouter>
   )
 }
