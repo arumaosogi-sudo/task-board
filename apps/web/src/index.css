@@ -258,6 +258,13 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
   box-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 12px 40px rgb(0 0 0 / 0.18);
   border-radius: 2px;
   position: relative;
+  /* Own stacking context (GoodNotes layering): the page + its absolute drawing overlay
+     (DrawingOverlay, z-10) are trapped in ONE layer that paints at z-index:auto level —
+     strictly BELOW the sticky editor toolbar (position:sticky z-10 → positive-z layer).
+     Without this, the overlay's z-10 flattened into the parent context and tied the
+     toolbar's z-10, so DOM order let ink paint over — and steal clicks from — the toolbar
+     on scroll. `isolate` also makes the toolbar win hit-testing in the overlap region. */
+  isolation: isolate;
   /* Page height drives where the visual page-break gap is painted. */
   --page-h: 1123px;
   /* repeating-linear-gradient: white content area, a thin rule + a grey gap between pages.

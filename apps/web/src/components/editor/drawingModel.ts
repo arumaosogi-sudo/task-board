@@ -46,6 +46,16 @@ export const pointsToFlat = (pts: Point[]): number[] => {
  *  pen so it reads as a rubber, and scales with the size picker (SPEC: ขนาดเลือกได้). */
 export const eraserRadius = (size: number) => size * 2 + 6
 
+/** Data-level viewport clip: clamp a captured point into the page box [0,w]×[0,h].
+ *  Pointer capture keeps firing while a stroke is dragged off-page (over the toolbar,
+ *  sidebar, or below the page), which would otherwise store off-page coordinates in the
+ *  CRDT and skew the exported SVG viewBox. Clamping pins the ink to the page edge —
+ *  matching GoodNotes, and complementing the CSS overflow clip on the live overlay. */
+export const clampPointToPage = (x: number, y: number, w: number, h: number): Point => ({
+  x: x < 0 ? 0 : x > w ? w : x,
+  y: y < 0 ? 0 : y > h ? h : y,
+})
+
 /** Re-export so the overlay/eraser code has a single import surface. */
 export { eraseStroke, strokeIntersectsDisc, pointsToPath }
 
