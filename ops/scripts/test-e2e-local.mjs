@@ -1,13 +1,13 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // One-command local E2E run: bring up an ISOLATED test-db + test-mailpit
-// (docker-compose.test.yml, ports 5433/2025/8026 — never the dev stack's
+// (docker-compose.test.yml, ports 5433/2025/8026 โ€” never the dev stack's
 // 5432/1025/8025), prepare the schema, boot api+web dev servers against that
 // isolated stack, run Playwright, then always tear everything back down.
 //
 // Prereqs (documented in ops/RUNBOOK.md "Test sandbox"):
 //   - Docker Desktop running
 //   - `npx playwright install chromium` run at least once in apps/web
-//   - Ports 3001/3002/5173 free — this starts real api/web dev servers on the
+//   - Ports 3001/5173 free (collab WS shares :3001) โ€” this starts real api/web dev servers on the
 //     SAME ports `npm run dev` uses, so stop any running dev session first.
 //
 // Usage:
@@ -31,7 +31,7 @@ const WEB_URL = 'http://localhost:5173'
 const MAILPIT_HTTP = 'http://localhost:8026'
 
 // Same shape as docker-compose.yml's api service, pointed at the isolated
-// test-db/test-mailpit instead. NODE_ENV must NOT be "production" — the auth
+// test-db/test-mailpit instead. NODE_ENV must NOT be "production" โ€” the auth
 // controller only sets non-secure cookies when it isn't, and Playwright talks
 // to plain http://localhost. Secrets are dev-only stand-ins (see
 // apps/api/src/config/validate-secrets.ts for why they can't be "change-me...").
@@ -75,7 +75,7 @@ async function main() {
     env: { ...process.env, DATABASE_URL: TEST_DATABASE_URL, DIRECT_URL: TEST_DATABASE_URL },
   })
 
-  console.log('[test:e2e:local] starting api dev server on :3001 (+ collab :3002)...')
+  console.log('[test:e2e:local] starting api dev server on :3001 (collab WS on the same port)...')
   apiProc = spawnBg('npm', ['run', 'dev', '--workspace', '@task-board/api'], { cwd: repoRoot, env: apiEnv, detached: process.platform !== 'win32' })
   await waitForHttp(`${API_URL}/health`, { label: 'api :3001/health', timeoutMs: 60_000 })
 
@@ -99,7 +99,7 @@ try {
   console.error('[test:e2e:local] FAIL:', err.message ?? err)
 } finally {
   if (keep) {
-    console.log('[test:e2e:local] --keep passed — leaving api/web + containers running. Tear down with:')
+    console.log('[test:e2e:local] --keep passed โ€” leaving api/web + containers running. Tear down with:')
     console.log('  (stop the api/web processes yourself, e.g. Ctrl+C or Task Manager)')
     console.log(`  docker compose -f "${composeFile}" down -v`)
   } else {

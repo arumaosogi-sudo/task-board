@@ -34,14 +34,11 @@ const mockFetch = () => {
   return fn
 }
 
-const silentLogger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() }
-
 const build = (over: Partial<ConstructorParameters<typeof GmailApiTransport>[0]> = {}) =>
   new GmailApiTransport({
     clientId: 'cid',
     clientSecret: 'secret',
     refreshToken: 'refresh',
-    logger: silentLogger,
     ...over,
   })
 

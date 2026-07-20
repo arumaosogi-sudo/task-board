@@ -1,4 +1,3 @@
-import { ServiceUnavailableException } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { SupabaseStorageService, sanitizeEnv, sanitizeUrl } from './supabase-storage.service'
 
@@ -151,6 +150,20 @@ describe('SupabaseStorageService', () => {
       await svc.verifyStorage()
       expect(list).toHaveBeenCalled()
     })
+
+    it('onModuleInit never blocks boot: returns synchronously even if the bucket probe hangs forever', () => {
+      // A hung storage endpoint (socket accepted, no response) makes list() a promise
+      // that never settles. onModuleInit fire-and-forgets verifyStorage via `void`, so
+      // boot must not await it — mirrors the mail-probe boot-safety guarantee that
+      // already prevented a 502 on the Railway deploy.
+      const list = jest.fn().mockReturnValue(new Promise(() => {}))
+      mockedCreateClient.mockReturnValue({ storage: { from: jest.fn(() => ({ list })) } })
+      const svc = new SupabaseStorageService(cfg({ SUPABASE_URL: GOOD_URL, SUPABASE_SERVICE_ROLE_KEY: GOOD_KEY }))
+      jest.spyOn((svc as unknown as { logger: { log: jest.Mock } }).logger, 'log').mockImplementation()
+
+      expect(svc.onModuleInit()).toBeUndefined()
+      expect(list).toHaveBeenCalledTimes(1)
+    })
   })
 })
 
@@ -158,8 +171,10 @@ describe('SupabaseStorageException codes are ServiceUnavailable (503)', () => {
   it('storage-unconfigured maps to a 503', async () => {
     mockedCreateClient.mockReset()
     const svc = new SupabaseStorageService(cfg({}))
-    await svc.upload('a.png', Buffer.from('x'), 'image/png').catch((err) => {
-      expect(err).toBeInstanceOf(ServiceUnavailableException)
+    // rejects.toMatchObject (not a .catch callback that silently no-ops if upload
+    // ever stops throwing) — the 503 SupabaseStorageException carries this code.
+    await expect(svc.upload('a.png', Buffer.from('x'), 'image/png')).rejects.toMatchObject({
+      response: { code: 'storage-unconfigured' },
     })
   })
 })

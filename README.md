@@ -26,7 +26,7 @@ Mental model: "GitHub diff + GoodNotes + Google Docs". Bilingual (Thai / English
         ▼                                                ▼
  ┌──────────────────────┐                     ┌──────────────────────┐
  │ api REST (NestJS)     │                     │ Hocuspocus collab WS │
- │ :3001                 │                     │ :3002 (same process) │
+ │ :3001                 │                     │ :3001 (shared port)  │
  │  auth · projects ·    │                     │  document CRDT sync  │
  │  files · revisions ·  │                     └──────────┬───────────┘
  │  notifications ·      │                                │
@@ -89,7 +89,7 @@ cd apps/api && npx prisma migrate deploy   # or `prisma migrate dev` while itera
 ## Development
 
 ```bash
-# API (:3001) + collab WS (:3002) + Web (:5173), all at once
+# API + collab WS (both :3001, shared server) + Web (:5173), all at once
 npm run dev
 ```
 
@@ -145,7 +145,7 @@ up, so run them locally like this:
 ```bash
 # 1. Bring up db + mailpit + api + web (Mailpit HTTP UI/API on :8025)
 docker compose up -d db mailpit
-npm run dev                    # api :3001 · collab :3002 · web :5173
+npm run dev                    # api + collab :3001 (shared) · web :5173
 
 # 2. Install browser binaries once
 cd apps/web && npx playwright install chromium
@@ -200,7 +200,7 @@ Both images build from the **repo root** (workspaces + `packages/shared` must re
 docker compose up --build
 
 # Web:  http://localhost:8080
-# API:  http://localhost:3001  (collab WS on :3002)
+# API:  http://localhost:3001  (collab WS shares this same port)
 ```
 
 Building images individually:

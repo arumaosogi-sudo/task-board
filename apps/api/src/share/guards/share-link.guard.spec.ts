@@ -3,7 +3,7 @@ import type { ExecutionContext } from '@nestjs/common'
 import { ShareLinkGuard } from './share-link.guard'
 import { hashToken } from '../../auth/token.util'
 
-const ctxFor = (token: string, req: any = {}) =>
+const ctxFor = (token: string, req: Record<string, unknown> = {}) =>
   ({
     switchToHttp: () => ({ getRequest: () => Object.assign(req, { params: { token } }) }),
   }) as unknown as ExecutionContext
@@ -22,12 +22,12 @@ const validLink = (over: Record<string, unknown> = {}) => ({
 })
 
 describe('ShareLinkGuard', () => {
-  let prisma: any
+  let prisma: { shareLink: { findUnique: jest.Mock } }
   let guard: ShareLinkGuard
 
   beforeEach(() => {
     prisma = { shareLink: { findUnique: jest.fn() } }
-    guard = new ShareLinkGuard(prisma)
+    guard = new ShareLinkGuard(prisma as unknown as ConstructorParameters<typeof ShareLinkGuard>[0])
   })
 
   it('looks the token up by its SHA-256 hash, never the plaintext', async () => {
@@ -40,7 +40,7 @@ describe('ShareLinkGuard', () => {
 
   it('attaches a minimal shareLink on success (no members/owner/comments)', async () => {
     prisma.shareLink.findUnique.mockResolvedValue(validLink())
-    const req: any = {}
+    const req: Record<string, unknown> = {}
     await guard.canActivate(ctxFor('rawtoken', req))
     expect(req.shareLink).toEqual({
       id: 'sl1', fileId: 'f1', projectId: 'p1', fileName: 'Doc',

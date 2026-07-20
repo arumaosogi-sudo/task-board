@@ -130,7 +130,6 @@ export class MailService implements OnModuleInit {
         clientId: gClientId,
         clientSecret: gClientSecret,
         refreshToken: gRefreshToken,
-        logger: this.logger,
       })
       this.mailMode = 'gmail-api'
       this.logger.log('Mail transport: Gmail API (HTTPS) — primary delivery path')
