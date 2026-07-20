@@ -12,7 +12,7 @@ import { cn } from '../../lib/cn'
 import type { Point } from './drawingGeometry'
 import {
   DRAW_ORIGIN, PAGE_W, eraserRadius, strokesToSvg, uid, flatToPoints, pointsToFlat,
-  eraseStroke, strokeIntersectsDisc, pointsToPath,
+  eraseStroke, strokeIntersectsDisc, pointsToPath, clampPointToPage,
   type DrawTool, type StoredStroke,
 } from './drawingModel'
 
@@ -64,7 +64,9 @@ export function DrawingOverlay({
   const pointFromEvent = useCallback((e: React.PointerEvent): Point => {
     const rect = svgRef.current?.getBoundingClientRect()
     if (!rect) return { x: 0, y: 0 }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    // Clamp into the page box: pointer capture keeps firing off-page (over the toolbar/
+    // sidebar), so this pins ink to the page edge instead of storing off-page coords.
+    return clampPointToPage(e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height)
   }, [])
 
   const commitStroke = useCallback((s: StoredStroke) => {
@@ -162,10 +164,13 @@ export function DrawingOverlay({
     />
   )
 
+  // overflow-hidden clips ink to the page rect (visual viewport clip). z-10 keeps ink above
+  // the text but stays trapped in .tb-page's stacking context (isolation, index.css), so it
+  // can never paint over — nor steal clicks from — the sticky editor toolbar.
   return (
     <svg
       ref={svgRef}
-      className={cn('absolute inset-0 z-10 h-full w-full', active ? '' : 'pointer-events-none')}
+      className={cn('absolute inset-0 z-10 h-full w-full overflow-hidden', active ? '' : 'pointer-events-none')}
       style={{
         pointerEvents: active ? 'auto' : 'none',
         touchAction: active ? 'none' : undefined,
