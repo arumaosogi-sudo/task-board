@@ -2,6 +2,7 @@ import 'reflect-metadata'
 import { ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { NestFactory } from '@nestjs/core'
+import compression from 'compression'
 import cookieParser from 'cookie-parser'
 import { json, urlencoded } from 'express'
 import helmet from 'helmet'
@@ -24,6 +25,17 @@ async function bootstrap() {
 
   // Fail fast on a missing/weak/default JWT secret before serving any traffic.
   validateAuthSecrets(app.get(ConfigService))
+
+  // gzip JSON responses (file trees, search, activity feeds can run tens of
+  // KB). threshold matches the package default (1KB) explicitly — small
+  // responses aren't worth the CPU. Compression package auto-skips
+  // already-encoded bodies and anything with `Cache-Control: no-transform`.
+  // This only touches the Express request/response pipeline; the collab
+  // (Hocuspocus) WebSocket upgrade is attached directly to the underlying
+  // Node HTTP server below (see CollabService.attachToHttpServer) and never
+  // passes through Express middleware, so it's unaffected. No SSE routes
+  // exist in this API today.
+  app.use(compression({ threshold: 1024 }))
 
   app.use(cookieParser())
 

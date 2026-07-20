@@ -4,6 +4,18 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Task Board</title>
+    <!-- Vite substitutes VITE_-prefixed env placeholders in this file at
+         build time (see vite.config.ts for why VITE_API_URL always has a
+         value — plain builds fall back to the same localhost default the
+         Dockerfile uses). This is a blind string replace across the whole
+         file, so avoid writing the placeholder token anywhere else in this
+         file (e.g. in comments) or it gets substituted too. Preconnecting
+         warms the TLS/TCP connection to the API origin before the app's own
+         JS decides to call it, shaving a round-trip off the first API
+         request (login, session check, etc). Collab WS shares this origin
+         (see .env.example), so one preconnect covers both. -->
+    <link rel="preconnect" href="%VITE_API_URL%" crossorigin />
+    <link rel="dns-prefetch" href="%VITE_API_URL%" />
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%236d5bd0'/><text x='16' y='22' text-anchor='middle' font-family='sans-serif' font-weight='bold' font-size='18' fill='white'>T</text></svg>" />
     <!-- Anti-FOUC: apply saved theme attributes before CSS renders -->
     <script>
