@@ -260,6 +260,38 @@ describe('wordDoc — images (SPEC 7)', () => {
     const docXml = await zip.files['word/document.xml'].async('string')
     expect(docXml).toMatch(/<wp:extent cx="\d+"/)
   })
+
+  it('maps data-layout="block-center" to a centered paragraph', async () => {
+    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="block-center">`
+    const doc = (await unzip(html))['word/document.xml']
+    // The image's paragraph carries center justification…
+    expect(doc).toMatch(/<w:jc w:val="center"\/>/)
+    // …and it's a plain inline drawing (no floating anchor) for block modes.
+    expect(doc).not.toMatch(/<wp:anchor/)
+    expect(doc).toMatch(/<wp:extent cx="\d+"/)
+  })
+
+  it('maps data-layout="block-right" to a right-aligned paragraph', async () => {
+    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="block-right">`
+    const doc = (await unzip(html))['word/document.xml']
+    expect(doc).toMatch(/<w:jc w:val="right"\/>/)
+  })
+
+  it('maps data-layout="wrap-left" to a REAL floating anchor with square text wrap', async () => {
+    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="wrap-left">`
+    const doc = (await unzip(html))['word/document.xml']
+    // Floating drawing (wp:anchor) rather than inline — this is genuine wrap, not fallback.
+    expect(doc).toMatch(/<wp:anchor/)
+    // Square wrapping with text on the right side of a left-floated image.
+    expect(doc).toMatch(/<wp:wrapSquare[^>]*wrapText="right"/)
+  })
+
+  it('maps data-layout="wrap-right" to a floating anchor wrapping text on the left', async () => {
+    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="wrap-right">`
+    const doc = (await unzip(html))['word/document.xml']
+    expect(doc).toMatch(/<wp:anchor/)
+    expect(doc).toMatch(/<wp:wrapSquare[^>]*wrapText="left"/)
+  })
 })
 
 describe('wordDoc — pure helpers', () => {

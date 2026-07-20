@@ -293,8 +293,22 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 }
 
 /* ---- Resizable image (SPEC 3) ---- */
+/* Text-facing gap injected around wrapped images (owner's "Margin Padding Injection").
+   Kept in sync with IMAGE_TEXT_GAP_PX in editor/imageLayout.ts. */
+:root { --tb-img-gap: 12px; }
 .tb-img-wrap { position: relative; display: inline-block; line-height: 0; }
 .tb-img-wrap img { max-width: 100%; border-radius: 8px; }
+
+/* ---- Image layout modes (Google-Docs-inspired) ----
+   The wrapper hugs the image (fit-content) so the resize handle + toolbar stay pinned
+   to the image corner, not the full page width. Each mode maps to a native flow model:
+   block = own line via auto margins; wrap = CSS float with collision margins. */
+.tb-img-wrap[data-layout='block-left'] { display: block; width: fit-content; margin-right: auto; }
+.tb-img-wrap[data-layout='block-center'] { display: block; width: fit-content; margin-left: auto; margin-right: auto; }
+.tb-img-wrap[data-layout='block-right'] { display: block; width: fit-content; margin-left: auto; }
+.tb-img-wrap[data-layout='wrap-left'] { float: left; margin-right: var(--tb-img-gap); margin-bottom: var(--tb-img-gap); }
+.tb-img-wrap[data-layout='wrap-right'] { float: right; margin-left: var(--tb-img-gap); margin-bottom: var(--tb-img-gap); }
+
 /* Google Docs style: no border/outline on the selected image — the corner resize
    handle (rendered by the node view) is the only selection affordance. */
 /* Resize handle follows the active accent (was hard-locked to violet #7c5cff, which
@@ -315,6 +329,56 @@ html[data-theme='amber'][data-mode='dark']  { --c-primary: 224 169 58;  --c-prim
 }
 .tb-img-handle:hover { transform: scale(1.25); }
 .tb-img-handle:active { transform: scale(1.1); }
+
+/* ---- Image alignment toolbar (appears on selection) ---- */
+@keyframes tb-img-pop { from { opacity: 0; transform: translateY(3px) scale(0.97); } to { opacity: 1; transform: none; } }
+.tb-img-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 5;
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  line-height: 1;
+  background: rgb(var(--c-card));
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgb(29 35 51 / 0.14), 0 0 0 1px rgb(var(--c-line));
+  animation: tb-img-pop 0.16s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) { .tb-img-toolbar { animation: none; } }
+.tb-img-toolbar__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: rgb(var(--c-muted));
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.tb-img-toolbar__btn:hover { background: rgb(var(--c-ink) / 0.05); color: rgb(var(--c-ink)); }
+.tb-img-toolbar__btn:focus-visible { outline: 2px solid rgb(var(--c-primary)); outline-offset: 1px; }
+.tb-img-toolbar__btn[data-active='true'] { background: rgb(var(--c-primary-soft)); color: rgb(var(--c-primary)); }
+
+/* ---- Resize snap badge ---- */
+.tb-img-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 5;
+  padding: 2px 7px;
+  font-family: var(--font-body, inherit);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: rgb(var(--c-paper));
+  background: rgb(29 35 51 / 0.78);
+  border-radius: 8px;
+  pointer-events: none;
+}
+.tb-img-badge[data-snapped='true'] { background: rgb(var(--c-primary)); }
 
 /* ---- Live collaboration cursors (Phase 4.3, CollaborationCursor) ---- */
 /* Caret border + label background come from each peer's inline color (see presence.ts). */

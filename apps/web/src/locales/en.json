@@ -232,7 +232,16 @@
     "uploading": "Uploading image…",
     "uploadFailed": "Upload failed",
     "retry": "Retry",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "imageLayout": {
+      "label": "Image position",
+      "inline": "Inline with text",
+      "blockLeft": "Align left",
+      "blockCenter": "Center",
+      "blockRight": "Align right",
+      "wrapLeft": "Wrap text (image left)",
+      "wrapRight": "Wrap text (image right)"
+    }
   },
   "mentions": {
     "listLabel": "Suggested members",

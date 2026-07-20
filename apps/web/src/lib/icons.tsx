@@ -38,6 +38,9 @@ export const Icon = {
   alignLeft: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 6h16M4 12h10M4 18h13" /></svg>),
   alignCenter: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 6h16M7 12h10M6 18h12" /></svg>),
   alignRight: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M4 6h16M10 12h10M7 18h13" /></svg>),
+  // Text-wrap markers: a square image block with text lines flowing beside it.
+  wrapLeft: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="3" y="4" width="8" height="8" rx="1" /><path d="M14 5h7M14 9h7M3 15h18M3 19h18" /></svg>),
+  wrapRight: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><rect x="13" y="4" width="8" height="8" rx="1" /><path d="M3 5h7M3 9h7M3 15h18M3 19h18" /></svg>),
   undo: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="M9 14 4 9l5-5" /><path d="M4 9h11a5 5 0 0 1 0 10h-3" /></svg>),
   redo: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><path d="m15 14 5-5-5-5" /><path d="M20 9H9a5 5 0 0 0 0 10h3" /></svg>),
   clock: (p: SVGProps<SVGSVGElement>) => (<svg {...base(p)}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>),

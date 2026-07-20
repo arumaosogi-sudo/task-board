@@ -462,6 +462,14 @@ export default function WorkPage() {
       `h3{font-family:'Sora','Noto Sans Thai',sans-serif;font-size:17px;font-weight:600;line-height:1.4;margin:10px 0 6px}` +
       `p{margin:8px 0}ul,ol{margin:8px 0;padding-left:24px}li{margin:2px 0}` +
       `a{color:#4f46e5;text-decoration:underline}img{max-width:100%;border-radius:8px}svg{max-width:100%;height:auto}` +
+      // Image layout modes (Google-Docs-inspired) — mirrors index.css .tb-img-wrap[data-layout].
+      // getHTML() emits bare <img data-layout=…>, so target the element directly here. The
+      // 12px collision gap = --tb-img-gap. break-inside:avoid on images (below) still holds.
+      `img[data-layout="block-left"]{display:block;margin-right:auto}` +
+      `img[data-layout="block-center"]{display:block;margin-left:auto;margin-right:auto}` +
+      `img[data-layout="block-right"]{display:block;margin-left:auto}` +
+      `img[data-layout="wrap-left"]{float:left;margin-right:12px;margin-bottom:12px}` +
+      `img[data-layout="wrap-right"]{float:right;margin-left:12px;margin-bottom:12px}` +
       `table{width:100%;border-collapse:collapse;margin:16px 0}` +
       `th,td{border:1px solid #d6dae4;padding:6px 10px;text-align:left;vertical-align:top}th{background:#f3f4f8;font-weight:600}` +
       `.tb-box{border-left:4px solid #7c5cff;background:#f3f0ff;border-radius:10px;padding:10px 14px;margin:12px 0}` +
