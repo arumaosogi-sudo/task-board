@@ -1,5 +1,5 @@
-// Data-safety migration: repair pre-inline-image documents so they bind to a
-// schema-VALID ProseMirror doc.
+// Data-safety migration: repair pre-inline-image documents BEFORE the collaborative
+// editor binds to them, so an old image position can never be silently destroyed.
 //
 // Background. Images used to be a BLOCK node (ResizableImage, inline:false), so an
 // image could be stored in the Yjs `default` XmlFragment as a direct child of the
@@ -8,22 +8,30 @@
 // An inline node is only schema-valid inside a textblock (paragraph / heading), so
 // every one of those old block positions is now ILLEGAL under the new schema.
 //
-// Why this is dangerous (not just cosmetic). y-prosemirror binds a ydoc to
-// ProseMirror with `NodeType.create()` — NOT `createChecked()` — so it does NOT throw
-// on illegal content: it silently yields a schema-invalid live doc. That doc then
-// crashes the editor / collab room on the next edit or peer update, where
-// `doc.check()` throws `RangeError: Invalid content for node doc`. Every document ever
-// edited with an image under the old block model hits this, because CollabEditor binds
-// straight from the ydoc and only HTML-seeds `File.content` when the fragment is EMPTY
-// (fragment.length === 0) — an old doc already has ydoc content, so it skips seeding
-// and goes straight down the invalid-bind path.
+// Why this is dangerous (silent DATA LOSS, not a cosmetic crash). The live editor binds
+// the ydoc through y-prosemirror's ySyncPlugin. When document content arrives (the
+// initial SyncStep2, or any later peer update), ySyncPlugin rebuilds the ProseMirror doc
+// via `createNodeFromYElement`. For a container holding a now-illegal inline image, that
+// builder fails and its error-recovery catch calls `el._item.delete()` on the WHOLE
+// CONTAINER — deleting the box / cell / list-item / blockquote AND the image inside it.
+// That delete is an ordinary Yjs change with origin `ySyncPluginKey`, so
+// HocuspocusProvider forwards it to the server and broadcasts it to every peer: the
+// container is SILENTLY AND PERMANENTLY removed from the stored document. It is NOT a
+// `doc.check()` RangeError — nothing throws to the user; the content just vanishes.
+// (A lone stray image at the fragment root is the harmless exception: ProseMirror's
+// Fitter auto-wraps it in a paragraph. Only the NESTED positions lose data.) Crucially
+// the destruction happens synchronously as the update is applied — i.e. the instant the
+// ySyncPlugin is bound and content lands — so there is NO "repair after synced" window:
+// by the time a post-sync callback could run, the container is already gone.
 //
-// Fix. Before the doc can be edited, wrap any inline `image` element that sits in a
-// non-textblock position inside a `paragraph`, in a single Yjs transaction, so the
-// repair rides the CRDT and syncs to every peer as a normal update (never a silent
-// local-only patch that would fight the synced version). Idempotent: a document whose
-// images already live inside textblocks is left completely untouched, so it is safe to
-// call on every load.
+// Fix (repair BEFORE bind). Wrap any inline `image` element that sits in a non-textblock
+// position inside a `paragraph`, in a single Yjs transaction, over the raw CRDT while NO
+// ySyncPlugin is bound to it. CollabEditor gates the editor mount on the provider's first
+// `synced` and runs this migration in that handler BEFORE mounting the editor — so the
+// editor only ever binds to an already-valid doc (see CollabEditor.tsx). The wrap rides
+// the CRDT and syncs to every peer as a normal update (never a silent local-only patch
+// that would fight the synced version). Idempotent: a document whose images already live
+// inside textblocks is left completely untouched, so it is safe to call on every load.
 import * as Y from 'yjs'
 
 // The ProseMirror node whose `inline: true` reclassification triggered this migration.

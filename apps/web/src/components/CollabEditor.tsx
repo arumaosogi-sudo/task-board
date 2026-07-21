@@ -1189,7 +1189,10 @@ function CollabEditorInner({
  * effect's cleanup runs on every StrictMode mount→unmount→remount, so the discarded
  * provider is torn down before it can race, leaving exactly one live connection.
  *
- * The inner editor only mounts once the primitives exist, so its hooks never see null.
+ * Mount timing is also load-bearing for data safety: the inner editor is mounted only
+ * AFTER the first `synced` AND the inline-image repair have run (repair-BEFORE-bind — see
+ * the migration note in the effect), so its ySyncPlugin never binds to a doc that still
+ * holds a schema-illegal old-model image. Its hooks therefore also never see null.
  */
 export function CollabEditor(props: CollabEditorProps) {
   const { fileId, token } = props
@@ -1202,27 +1205,39 @@ export function CollabEditor(props: CollabEditorProps) {
     // tracks local ink (DRAW_ORIGIN), so draw-mode undo reverts my stroke, never a peer's.
     const drawUndo = new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) })
 
-    // Data-safety repair (see inlineImageMigration): documents authored under the old
-    // BLOCK image model can carry an image in a position the new `inline: true` schema
-    // forbids (top-level, or directly inside a box/cell/list). y-prosemirror binds such a
-    // ydoc into a SILENTLY schema-invalid doc that crashes on the next edit/peer update.
-    // Run the idempotent, transactional wrap once, the moment the server's content lands
-    // (`synced`) and before the user can edit — the fix then syncs to every peer as a
-    // normal CRDT update. Runs unconditionally (not gated on being "alone"): guaranteeing a
-    // VALID doc is worth the astronomically-rare cost of a duplicated image if two clients
-    // ever open the very same never-migrated doc within the same sync tick.
-    let repaired = false
-    const repair = () => {
-      if (repaired) return
-      repaired = true
+    // Data-safety repair, run REPAIR-BEFORE-BIND (see inlineImageMigration): documents
+    // authored under the old BLOCK image model can carry an image in a position the new
+    // `inline: true` schema forbids (top-level, or directly inside a box/cell/list/
+    // blockquote). If the editor's ySyncPlugin is already bound when that content lands,
+    // its `createNodeFromYElement` error-recovery SILENTLY deletes the whole containing
+    // node — and that delete (origin ySyncPluginKey) is forwarded to the server and
+    // broadcast to every peer, permanently destroying the container + image. The deletion
+    // is synchronous with the update, so it happens BEFORE any post-`synced` callback: a
+    // "repair after bind" is always too late.
+    //
+    // So we do NOT mount the editor until the server's content has landed (first `synced`)
+    // AND the idempotent, transactional wrap has run over the raw CRDT while nothing is
+    // bound to it. `setCollab` — which mounts <CollabEditorInner> and, through it, the
+    // ySyncPlugin — is therefore deferred into the `synced` handler, immediately AFTER the
+    // migration. The editor then binds only to an already-valid doc; the wrap itself rides
+    // the CRDT to every peer as a normal update. The `if (!collab)` spinner below covers
+    // the (normally brief) gap until first sync. Runs unconditionally (not gated on being
+    // "alone"): guaranteeing a VALID doc is worth the astronomically-rare cost of a
+    // duplicated image if two clients open the very same never-migrated doc in one sync tick.
+    let started = false
+    const startOnce = () => {
+      if (started) return
+      started = true
+      // Repair BEFORE the editor (ySyncPlugin) ever binds to this ydoc's content.
       migrateInlineImages(ydoc)
+      setCollab({ ydoc, provider, drawUndo })
     }
-    provider.on('synced', repair)
-    if (provider.synced) repair()
+    provider.on('synced', startOnce)
+    // Cover the race where the provider synced before this listener was attached.
+    if (provider.synced) startOnce()
 
-    setCollab({ ydoc, provider, drawUndo })
     return () => {
-      provider.off('synced', repair)
+      provider.off('synced', startOnce)
       // Order: manager → provider (closes the socket) → doc.
       drawUndo.destroy()
       provider.destroy()
@@ -1236,7 +1251,12 @@ export function CollabEditor(props: CollabEditorProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fileId])
 
-  // First paint (and StrictMode's discarded passes) before the effect commits: no room yet.
+  // Loading state, shown until the room exists AND its content has first synced+repaired
+  // (see the effect: `collab` is only set inside the first-`synced` handler, after the
+  // inline-image migration). Also covers first paint and StrictMode's discarded passes.
+  // Normally a brief flash; if the collab server is unreachable it persists (same as any
+  // other "can't reach the doc" state) — deliberately NOT time-boxed into mounting the
+  // editor early, which would reintroduce the destructive bind-before-repair path.
   if (!collab) {
     return (
       <div className="grid place-items-center py-16">
