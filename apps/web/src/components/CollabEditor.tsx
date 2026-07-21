@@ -43,6 +43,7 @@ import { ResizableImage } from './editor/ResizableImage'
 import { CommentHighlight } from './editor/CommentHighlight'
 import { applyCommentMark, rangeToAnchor } from './editor/commentAnchor'
 import { migrateLegacyDrawings } from './editor/drawing'
+import { migrateInlineImages } from './editor/inlineImageMigration'
 import { DrawingOverlay } from './editor/DrawingOverlay'
 import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
 import { buildMentionSuggestion } from './editor/mentionSuggestion'
@@ -1200,8 +1201,28 @@ export function CollabEditor(props: CollabEditorProps) {
     // Drawing-layer UndoManager (ADR 0005 D4): scoped to the `drawings` Y.Array and only
     // tracks local ink (DRAW_ORIGIN), so draw-mode undo reverts my stroke, never a peer's.
     const drawUndo = new Y.UndoManager(ydoc.getArray('drawings'), { trackedOrigins: new Set([DRAW_ORIGIN]) })
+
+    // Data-safety repair (see inlineImageMigration): documents authored under the old
+    // BLOCK image model can carry an image in a position the new `inline: true` schema
+    // forbids (top-level, or directly inside a box/cell/list). y-prosemirror binds such a
+    // ydoc into a SILENTLY schema-invalid doc that crashes on the next edit/peer update.
+    // Run the idempotent, transactional wrap once, the moment the server's content lands
+    // (`synced`) and before the user can edit — the fix then syncs to every peer as a
+    // normal CRDT update. Runs unconditionally (not gated on being "alone"): guaranteeing a
+    // VALID doc is worth the astronomically-rare cost of a duplicated image if two clients
+    // ever open the very same never-migrated doc within the same sync tick.
+    let repaired = false
+    const repair = () => {
+      if (repaired) return
+      repaired = true
+      migrateInlineImages(ydoc)
+    }
+    provider.on('synced', repair)
+    if (provider.synced) repair()
+
     setCollab({ ydoc, provider, drawUndo })
     return () => {
+      provider.off('synced', repair)
       // Order: manager → provider (closes the socket) → doc.
       drawUndo.destroy()
       provider.destroy()
