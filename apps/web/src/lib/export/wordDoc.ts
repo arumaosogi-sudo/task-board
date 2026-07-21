@@ -29,11 +29,6 @@ import {
   Table,
   TableRow,
   TableCell,
-  TextWrappingType,
-  TextWrappingSide,
-  HorizontalPositionAlign,
-  HorizontalPositionRelativeFrom,
-  VerticalPositionRelativeFrom,
   type IParagraphOptions,
   type IRunOptions,
   type ISectionOptions,
@@ -92,22 +87,10 @@ interface Fmt {
 const isEl = (n: Node): n is HTMLElement => n.nodeType === 1
 const tag = (n: Node) => (isEl(n) ? n.tagName.toLowerCase() : '')
 
-/** Image `data-layout` attr (Google-Docs positioning) → its OOXML meaning.
- *  block-* map to paragraph alignment; wrap-* are handled by a floating anchor but
- *  their side is reused as the paragraph-alignment fallback if floating is skipped. */
-const IMG_LAYOUT_ALIGN: Record<string, (typeof AlignmentType)[keyof typeof AlignmentType]> = {
-  'block-left': AlignmentType.LEFT,
-  'block-center': AlignmentType.CENTER,
-  'block-right': AlignmentType.RIGHT,
-  'wrap-left': AlignmentType.LEFT,
-  'wrap-right': AlignmentType.RIGHT,
-}
-
-/** CSS `text-align` (and, for images, the `data-layout` attr) on a block element →
- *  docx AlignmentType. */
+/** CSS `text-align` (or the legacy `align` attribute) on a block element → docx
+ *  AlignmentType. Images are inline now, so an image's L/C/R comes from its paragraph's
+ *  alignment (this function reading the <p>), not from any per-image attribute. */
 function alignOf(el: HTMLElement): (typeof AlignmentType)[keyof typeof AlignmentType] | undefined {
-  const layout = el.getAttribute('data-layout')
-  if (layout && layout in IMG_LAYOUT_ALIGN) return IMG_LAYOUT_ALIGN[layout]
   const a = el.style.textAlign || el.getAttribute('align') || ''
   if (a === 'center') return AlignmentType.CENTER
   if (a === 'right') return AlignmentType.RIGHT
@@ -189,14 +172,9 @@ export function intrinsicSize(bytes: Uint8Array, type: DocxImgType): { w: number
   return null
 }
 
-// Text-facing gap around a floating (wrapped) image, in EMU. Mirrors --tb-img-gap /
-// IMAGE_TEXT_GAP_PX (12px on screen). 1px @ 96dpi = 9525 EMU.
-const IMG_WRAP_GAP_EMU = 12 * 9525
-
 /** Build an ImageRun from an `<img data:...>` element, capped to the content width.
- *  When the image carries `data-layout="wrap-left|wrap-right"`, it becomes a *floating*
- *  anchor with square text wrapping (real Google-Docs-style wrap in Word); every other
- *  layout is an ordinary inline drawing (block alignment is applied on its paragraph). */
+ *  Images are always ordinary inline drawings now ("in line with text"); left/center/right
+ *  is applied on the containing paragraph (see alignOf), so there is no floating anchor. */
 function imageRun(el: HTMLElement): ImageRun | null {
   const src = el.getAttribute('src') || ''
   const m = src.match(/^data:image\/(png|jpe?g|gif|bmp);base64,(.+)$/i)
@@ -218,36 +196,6 @@ function imageRun(el: HTMLElement): ImageRun | null {
   if (width > CONTENT_WIDTH_PX) {
     width = CONTENT_WIDTH_PX
     height = Math.round(CONTENT_WIDTH_PX * aspect)
-  }
-
-  const layout = el.getAttribute('data-layout')
-  if (layout === 'wrap-left' || layout === 'wrap-right') {
-    const left = layout === 'wrap-left'
-    return new ImageRun({
-      data: bytes,
-      type,
-      transformation: { width, height },
-      floating: {
-        // Anchor to the page margin, aligned to the image's side; text wraps down the
-        // opposite (text-facing) side with a fixed collision gap on that side.
-        horizontalPosition: {
-          relative: HorizontalPositionRelativeFrom.MARGIN,
-          align: left ? HorizontalPositionAlign.LEFT : HorizontalPositionAlign.RIGHT,
-        },
-        verticalPosition: { relative: VerticalPositionRelativeFrom.LINE, offset: 0 },
-        wrap: {
-          type: TextWrappingType.SQUARE,
-          side: left ? TextWrappingSide.RIGHT : TextWrappingSide.LEFT,
-        },
-        margins: {
-          top: IMG_WRAP_GAP_EMU / 2,
-          bottom: IMG_WRAP_GAP_EMU / 2,
-          left: left ? 0 : IMG_WRAP_GAP_EMU,
-          right: left ? IMG_WRAP_GAP_EMU : 0,
-        },
-        allowOverlap: false,
-      },
-    })
   }
 
   return new ImageRun({ data: bytes, type, transformation: { width, height } })
@@ -479,10 +427,11 @@ function walkBlock(node: Node, ctx: BlockCtx, out: FileChild[]): void {
       out.push(new Paragraph({ border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: TABLE_BORDER, space: 1 } } }))
       return
     case 'img': {
-      // Bare, block-level <img> (the editor's Image node is inline:false, so
-      // editor.getHTML() emits a top-level <img>; rasterized drawings hit here too).
-      // Must build the ImageRun directly — routing through paragraph() would read the
-      // element's CHILDREN, and <img> is void (zero children) → the image is dropped.
+      // The editor's Image node is inline now, so editor.getHTML() nests images inside a
+      // <p> (handled by the inline walk). This block-level branch is the fallback for a
+      // BARE top-level <img> — rasterized drawings, and documents saved by the old block
+      // model. Build the ImageRun directly: routing through paragraph() would read the
+      // element's CHILDREN, and <img> is void (zero children) → the image would be dropped.
       const run = imageRun(el)
       if (run) out.push(new Paragraph({ children: [run], alignment: alignOf(el) }))
       return

@@ -293,7 +293,10 @@ function CollabEditorInner({
     FontFamily,
     FontSize,
     // SPEC 3 — resizable variant; same config surface as the stock Image extension.
-    ResizableImage.configure({ inline: false, allowBase64: true }),
+    // inline:true = Word "in line with text": the image is a large character in the text
+    // flow (cursor sits before/after it, you type/space around it). Left/center/right come
+    // from the paragraph alignment toolbar (TextAlign below) — no separate image menu.
+    ResizableImage.configure({ inline: true, allowBase64: true }),
     Box,
     // resizable:false — column resize handles fight the Yjs sync and add little value here.
     Table.configure({ resizable: false }),
