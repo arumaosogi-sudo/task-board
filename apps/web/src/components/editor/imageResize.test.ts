@@ -1,33 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import {
-  isImageLayout,
-  isWrapLayout,
-  snapWidth,
-  fractionLabel,
-  IMAGE_LAYOUTS,
-  SNAP_TOLERANCE_PX,
-  MIN_IMAGE_WIDTH_PX,
-} from './imageLayout'
+import { snapWidth, fractionLabel, SNAP_TOLERANCE_PX, MIN_IMAGE_WIDTH_PX } from './imageResize'
 
-describe('imageLayout — layout type guards', () => {
-  it('accepts every known layout and rejects junk', () => {
-    IMAGE_LAYOUTS.forEach((l) => expect(isImageLayout(l)).toBe(true))
-    expect(isImageLayout('center')).toBe(false)
-    expect(isImageLayout('')).toBe(false)
-    expect(isImageLayout(null)).toBe(false)
-    expect(isImageLayout(undefined)).toBe(false)
-    expect(isImageLayout(42)).toBe(false)
-  })
-
-  it('isWrapLayout is true only for the two float modes', () => {
-    expect(isWrapLayout('wrap-left')).toBe(true)
-    expect(isWrapLayout('wrap-right')).toBe(true)
-    expect(isWrapLayout('block-center')).toBe(false)
-    expect(isWrapLayout('inline')).toBe(false)
-  })
-})
-
-describe('imageLayout — snapWidth', () => {
+describe('imageResize — snapWidth', () => {
   const CONTENT = 600 // 25%=150, 33.3%=200, 50%=300, 66.6%=400, 75%=450, 100%=600
 
   it('snaps to the nearest fraction target when within tolerance', () => {
@@ -71,7 +45,7 @@ describe('imageLayout — snapWidth', () => {
   })
 })
 
-describe('imageLayout — fractionLabel', () => {
+describe('imageResize — fractionLabel', () => {
   it('formats fractions as rounded percents', () => {
     expect(fractionLabel(0.25)).toBe('25%')
     expect(fractionLabel(1 / 3)).toBe('33%')

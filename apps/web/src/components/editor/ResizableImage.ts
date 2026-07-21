@@ -6,13 +6,18 @@
 import Image from '@tiptap/extension-image'
 import { ReactNodeViewRenderer } from '@tiptap/react'
 import { ResizableImageView } from './ResizableImageView'
-import { isImageLayout, DEFAULT_IMAGE_LAYOUT } from './imageLayout'
 
+// Configured `inline: true` in CollabEditor → the image is an inline node ("in line with
+// text", Word-style): the cursor sits before/after it and text/spaces flow around it.
+// There is no image `layout` attr anymore — left/center/right come from the paragraph's
+// own alignment (TextAlign). Old documents may still carry a `data-layout` attribute on
+// the stored <img>; parseHTML simply ignores it and the image opens as a plain inline
+// image (backward compatible — see ResizableImage.test.ts).
 export const ResizableImage = Image.extend({
-  // Google Docs-style inline reposition: let ProseMirror own the drag. With
-  // `draggable: true` on the node spec + a `data-drag-handle` element in the node
-  // view, PM moves the node by rewriting its *position* in the doc — it never
-  // touches node attributes, so this stays Yjs-safe (no mid-drag width churn).
+  // Drag-to-reposition: let ProseMirror own the drag. With `draggable: true` on the node
+  // spec + a `data-drag-handle` element in the node view, PM moves the node by rewriting
+  // its *position* in the doc — it never touches node attributes, so this stays Yjs-safe
+  // (no mid-drag width churn).
   draggable: true,
 
   addAttributes() {
@@ -22,22 +27,6 @@ export const ResizableImage = Image.extend({
         default: null,
         parseHTML: (el) => el.getAttribute('width'),
         renderHTML: (attrs) => (attrs.width ? { width: attrs.width } : {}),
-      },
-      // Google-Docs-style positioning. Serialized to `data-layout` so it round-trips
-      // through File.content mirror + getHTML() + Word/PDF export. Absent attr → inline,
-      // which keeps every existing document byte-identical (backward compatible). The
-      // value rides the node attrs, so Yjs syncs it to every collab peer for free.
-      layout: {
-        default: DEFAULT_IMAGE_LAYOUT,
-        parseHTML: (el) => {
-          const v = el.getAttribute('data-layout')
-          return isImageLayout(v) ? v : DEFAULT_IMAGE_LAYOUT
-        },
-        // Only emit the attr for non-default layouts — inline images stay clean HTML.
-        renderHTML: (attrs) =>
-          attrs.layout && attrs.layout !== DEFAULT_IMAGE_LAYOUT
-            ? { 'data-layout': attrs.layout }
-            : {},
       },
     }
   },

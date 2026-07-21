@@ -1,49 +1,9 @@
-// SPEC — Google-Docs-inspired image layout system (pure, framework-free core).
+// SPEC 3 — resize-snap math for the inline image node (pure, framework-free core).
 //
-// This module owns the *data model* and *math* for image positioning so both the
-// editor node view (ResizableImageView) and the export pipelines (Word/PDF) share one
-// source of truth. It has zero React / ProseMirror / DOM dependencies, so it is unit
-// tested directly (imageLayout.test.ts).
-//
-// ProseMirror uses a document flow model — there is NO absolute free placement. Every
-// layout below maps to something the flow model renders natively: normal inline flow,
-// a block on its own line (margins), or a CSS float with text wrapping. We deliberately
-// do NOT fake drag-to-reposition.
-
-/** How an image sits in the document flow. `inline` is the historical default. */
-export type ImageLayout =
-  | 'inline' // flows inline with text (legacy behavior; default for existing docs)
-  | 'block-left' // own line, hugged left
-  | 'block-center' // own line, centered via auto margins
-  | 'block-right' // own line, hugged right
-  | 'wrap-left' // floats left, text wraps down its right side
-  | 'wrap-right' // floats right, text wraps down its left side
-
-export const IMAGE_LAYOUTS: readonly ImageLayout[] = [
-  'inline',
-  'block-left',
-  'block-center',
-  'block-right',
-  'wrap-left',
-  'wrap-right',
-]
-
-/** Existing docs have no `layout` attr → they must keep rendering exactly as before. */
-export const DEFAULT_IMAGE_LAYOUT: ImageLayout = 'inline'
-
-/** Text-facing gap injected around wrapped images so text never kisses the edge.
- *  Mirrors the `--tb-img-gap` CSS token (12px). Kept here as a number so the export
- *  pipelines (which don't read CSS) can reuse the exact same value. */
-export const IMAGE_TEXT_GAP_PX = 12
-
-export function isImageLayout(v: unknown): v is ImageLayout {
-  return typeof v === 'string' && (IMAGE_LAYOUTS as readonly string[]).includes(v)
-}
-
-/** True for the two float-with-wrap modes (they carry collision margins). */
-export function isWrapLayout(layout: ImageLayout): layout is 'wrap-left' | 'wrap-right' {
-  return layout === 'wrap-left' || layout === 'wrap-right'
-}
+// Images are "in line with text" (Word-style): the node is inline and alignment comes
+// from the paragraph's own alignment (TextAlign), so there is NO image layout/position
+// model here anymore — only the drag-to-resize snapping stays. This module has zero
+// React / ProseMirror / DOM dependencies, so it is unit tested directly (imageResize.test.ts).
 
 /* ── Resize snapping ───────────────────────────────────────────────────────────
    While the user drags the resize handle, width snaps to a small set of "nice"

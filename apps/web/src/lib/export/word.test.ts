@@ -242,55 +242,71 @@ describe('wordDoc — images (SPEC 7)', () => {
     expect(media).toBeTruthy()
   })
 
-  it('embeds a BARE top-level <img> (Image node is inline:false → getHTML emits no <p> wrapper)', async () => {
-    // Regression: the editor's ResizableImage is configured inline:false, so
-    // editor.getHTML() serializes a top-level <img> with NO <p> wrapper (and
-    // rasterized drawings arrive the same way). The block-<img> handler must build
-    // the ImageRun directly — the old code routed through paragraph(), which reads
-    // the element's CHILDREN, and <img> is void → the image was silently dropped.
+  it('embeds an inline image nested in its <p> (Image node is inline → getHTML wraps it)', async () => {
+    // The editor's ResizableImage is configured inline:true, so editor.getHTML() serializes
+    // the image INSIDE its paragraph. The inline walk builds the ImageRun; it must be a plain
+    // inline drawing (never a floating anchor).
+    const html = `<p><img src="data:image/png;base64,${PNG_1x1}"></p>`
+    const buf = await buildWordBuffer(html, 'inline')
+    const zip = await JSZip.loadAsync(buf)
+
+    const mediaFiles = Object.keys(zip.files).filter((p) => p.startsWith('word/media/') && !zip.files[p].dir)
+    expect(mediaFiles.length).toBe(1)
+
+    const docXml = await zip.files['word/document.xml'].async('string')
+    expect(docXml).toMatch(/<wp:extent cx="\d+"/)
+    expect(docXml).not.toMatch(/<wp:anchor/) // inline drawing, not floating
+  })
+
+  it('embeds a BARE top-level <img> too (rasterized drawings + old block-model docs)', async () => {
+    // Backward-compat fallback: a bare, top-level <img> (rasterized drawings, or documents
+    // saved by the previous block model) is handled by the block-<img> branch, which builds
+    // the ImageRun directly (paragraph() reads CHILDREN, and <img> is void → would be dropped).
     const html = `<img src="data:image/png;base64,${PNG_1x1}">`
     const buf = await buildWordBuffer(html, 'bare')
     const zip = await JSZip.loadAsync(buf)
 
-    // Exactly one real media entry — proof the bytes were embedded, not dropped.
     const mediaFiles = Object.keys(zip.files).filter((p) => p.startsWith('word/media/') && !zip.files[p].dir)
     expect(mediaFiles.length).toBe(1)
 
-    // And the document references it via a sized drawing (wp:extent).
     const docXml = await zip.files['word/document.xml'].async('string')
     expect(docXml).toMatch(/<wp:extent cx="\d+"/)
   })
 
-  it('maps data-layout="block-center" to a centered paragraph', async () => {
-    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="block-center">`
+  it('an inline image in a CENTERED paragraph exports centered (w:jc=center, inline drawing)', async () => {
+    // Word-style alignment: the image inherits its paragraph's alignment. TextAlign renders
+    // the paragraph as `style="text-align:center"`; alignOf reads that → w:jc=center.
+    const html = `<p style="text-align:center"><img src="data:image/png;base64,${PNG_1x1}"></p>`
     const doc = (await unzip(html))['word/document.xml']
-    // The image's paragraph carries center justification…
     expect(doc).toMatch(/<w:jc w:val="center"\/>/)
-    // …and it's a plain inline drawing (no floating anchor) for block modes.
+    // Plain inline drawing — no floating anchor, no wrapSquare (those modes are gone).
     expect(doc).not.toMatch(/<wp:anchor/)
+    expect(doc).not.toMatch(/<wp:wrapSquare/)
     expect(doc).toMatch(/<wp:extent cx="\d+"/)
   })
 
-  it('maps data-layout="block-right" to a right-aligned paragraph', async () => {
-    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="block-right">`
+  it('an inline image in a RIGHT-aligned paragraph exports right-aligned (w:jc=right)', async () => {
+    const html = `<p style="text-align:right"><img src="data:image/png;base64,${PNG_1x1}"></p>`
     const doc = (await unzip(html))['word/document.xml']
     expect(doc).toMatch(/<w:jc w:val="right"\/>/)
+    expect(doc).not.toMatch(/<wp:anchor/)
   })
 
-  it('maps data-layout="wrap-left" to a REAL floating anchor with square text wrap', async () => {
-    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="wrap-left">`
+  it('an inline image in a LEFT/default paragraph is not force-centered', async () => {
+    const html = `<p style="text-align:left"><img src="data:image/png;base64,${PNG_1x1}"></p>`
     const doc = (await unzip(html))['word/document.xml']
-    // Floating drawing (wp:anchor) rather than inline — this is genuine wrap, not fallback.
-    expect(doc).toMatch(/<wp:anchor/)
-    // Square wrapping with text on the right side of a left-floated image.
-    expect(doc).toMatch(/<wp:wrapSquare[^>]*wrapText="right"/)
+    expect(doc).not.toMatch(/<w:jc w:val="center"\/>/)
+    expect(doc).not.toMatch(/<w:jc w:val="right"\/>/)
   })
 
-  it('maps data-layout="wrap-right" to a floating anchor wrapping text on the left', async () => {
-    const html = `<img src="data:image/png;base64,${PNG_1x1}" data-layout="wrap-right">`
+  it('opens an OLD stored <img data-layout=…> without error (obsolete attr ignored)', async () => {
+    // Backward-compat: documents saved by the previous block model carried data-layout on the
+    // <img>. It must no longer drive any floating/anchor behavior — just embed the image.
+    const html = `<p><img src="data:image/png;base64,${PNG_1x1}" data-layout="wrap-left"></p>`
     const doc = (await unzip(html))['word/document.xml']
-    expect(doc).toMatch(/<wp:anchor/)
-    expect(doc).toMatch(/<wp:wrapSquare[^>]*wrapText="left"/)
+    expect(doc).toMatch(/<wp:extent cx="\d+"/)
+    expect(doc).not.toMatch(/<wp:anchor/)
+    expect(doc).not.toMatch(/<wp:wrapSquare/)
   })
 })
 
