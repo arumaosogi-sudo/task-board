@@ -8,13 +8,13 @@ import { Icon } from '../lib/icons'
 import { useAuth } from '../lib/auth'
 import { api, apiError } from '../lib/api'
 
-type State = 'working' | 'done' | 'error' | 'need-login'
+type State = 'working' | 'done' | 'error' | 'need-login' | 'email-mismatch'
 
 export default function AcceptInvite() {
   const { t } = useTranslation()
   const [params] = useSearchParams()
   const token = params.get('token') ?? ''
-  const { user, initializing } = useAuth()
+  const { user, initializing, logout } = useAuth()
   const navigate = useNavigate()
   const [state, setState] = useState<State>('working')
   const [error, setError] = useState('')
@@ -40,7 +40,15 @@ export default function AcceptInvite() {
         setProjectName(res.data.name)
         setState('done')
       } catch (err) {
-        setError(apiError(err).message || t('invite.invalidExpired'))
+        const { code, message } = apiError(err)
+        // The invite was issued to a different email than the signed-in account —
+        // a distinct, recoverable case: offer to switch accounts rather than showing
+        // a dead-end error banner.
+        if (code === 'invite-email-mismatch') {
+          setState('email-mismatch')
+          return
+        }
+        setError(message || t('invite.invalidExpired'))
         setState('error')
       }
     })()
@@ -75,6 +83,19 @@ export default function AcceptInvite() {
               <h1 className="font-heading text-xl font-semibold">{t('invite.joinedTitle')}</h1>
               <p className="text-sm text-muted">{t('invite.joinedDesc', { project: projectName })}</p>
               <Button full onClick={() => navigate('/home', { replace: true })}>{t('invite.goToProject')}</Button>
+            </>
+          )}
+          {state === 'email-mismatch' && (
+            <>
+              <div className="grid size-16 place-items-center rounded-2xl bg-primary-soft"><Icon.invite width={28} height={28} className="text-primary" /></div>
+              <h1 className="font-heading text-xl font-semibold">{t('invite.mismatchTitle')}</h1>
+              <p className="text-sm text-muted">{t('invite.mismatchDesc', { email: user?.email ?? '' })}</p>
+              {/* Log out of the wrong account, then land on sign-in with the invite
+                  link preserved so the user returns straight here after re-auth. */}
+              <Button full onClick={async () => { await logout(); navigate('/', { state: { next: back }, replace: true }) }}>
+                {t('invite.switchAccount')}
+              </Button>
+              <Link to="/home" className="w-full"><Button full variant="secondary">{t('common.backHome')}</Button></Link>
             </>
           )}
           {state === 'error' && (

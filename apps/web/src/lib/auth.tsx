@@ -59,13 +59,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true
     ;(async () => {
-      const token = await bootstrapSession()
+      const { token, user: bootstrapped } = await bootstrapSession()
       if (!active) return
       if (token) {
-        try {
-          setUser(await fetchMe())
-        } catch {
-          setUser(null)
+        if (bootstrapped) {
+          // New API bundles the profile with /auth/refresh — no extra round-trip.
+          setUser(bootstrapped as AuthUser)
+        } else {
+          // Older API (deploy window) returned only a token — fall back to /auth/me.
+          try {
+            setUser(await fetchMe())
+          } catch {
+            setUser(null)
+          }
         }
       }
       if (active) setInitializing(false)
@@ -90,8 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password,
     })
     setAccessToken(res.data.accessToken)
-    // Login returns the user without settings; fetch the full profile.
-    const me = await fetchMe().catch(() => res.data.user)
+    // New API returns the full profile (the `setting` key is present, possibly null)
+    // — use it directly. Older API omitted settings entirely, so fall back to /auth/me
+    // only when the key is absent (deploy window), never on a legitimately-null setting.
+    const hasFullProfile = res.data.user != null && 'setting' in res.data.user
+    const me = hasFullProfile ? res.data.user : await fetchMe().catch(() => res.data.user)
     setUser(me)
     return me
   }, [])

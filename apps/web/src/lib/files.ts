@@ -81,7 +81,15 @@ export function useCreateFile(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape'; content?: string }) => FilesApi.create(projectId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) }),
+    onSuccess: (created) => {
+      // Seed the doc cache so opening the just-created document reads from cache
+      // instead of paying a redundant GET (the create response already carries its
+      // content). Folders have no doc view, so only seed Documents.
+      if (created.kind === 'Document') {
+        qc.setQueryData(fileKeys.doc(projectId, created.id), created)
+      }
+      qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) })
+    },
   })
 }
 

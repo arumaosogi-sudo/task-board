@@ -122,7 +122,10 @@
     "goToSignIn": "Go to sign in",
     "joinedTitle": "Joined successfully",
     "joinedDesc": "Joined “{{project}}”",
-    "goToProject": "Go to Project"
+    "goToProject": "Go to Project",
+    "mismatchTitle": "This invitation is for a different email",
+    "mismatchDesc": "You're signed in as {{email}}, but this invitation was issued to a different account. Please sign in with the invited email.",
+    "switchAccount": "Sign in with a different account"
   },
   "home": {
     "subtitle": "Projects you own or are a member of",

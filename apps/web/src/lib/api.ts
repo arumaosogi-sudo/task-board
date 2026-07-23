@@ -63,8 +63,36 @@ api.interceptors.response.use(
   },
 )
 
-/** Best-effort silent bootstrap on app load — returns a token if a session exists. */
-export const bootstrapSession = () => refreshAccessToken()
+/**
+ * Best-effort silent bootstrap on app load. Restores the session from the refresh
+ * cookie and returns BOTH the access token and the user profile, so AuthProvider
+ * can hydrate without a separate serial /auth/me round-trip.
+ *
+ * `user` is `null` when there's no session (401) OR when talking to an older API
+ * build that doesn't yet bundle the profile — callers fall back to /auth/me in the
+ * latter case. A transient network blip (cold API/DB, no HTTP response) is retried
+ * once so a brief hiccup doesn't spuriously log the user out.
+ */
+export async function bootstrapSession(): Promise<{ token: string | null; user: unknown }> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await axios.post<{ accessToken: string; user?: unknown }>(
+        `${API_URL}/auth/refresh`,
+        {},
+        { withCredentials: true },
+      )
+      setAccessToken(res.data.accessToken)
+      return { token: res.data.accessToken, user: res.data.user ?? null }
+    } catch (err) {
+      // A real 401/403 (no/expired session) is final — don't retry, just clear.
+      if (axios.isAxiosError(err) && err.response) break
+      // No response = network/cold-start blip: pause briefly and retry once.
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 600))
+    }
+  }
+  setAccessToken(null)
+  return { token: null, user: null }
+}
 
 /** Decode a JWT's `exp` claim (unix seconds). Returns null if unparseable. */
 function jwtExp(token: string): number | null {

@@ -122,7 +122,10 @@
     "goToSignIn": "ไปหน้าเข้าสู่ระบบ",
     "joinedTitle": "เข้าร่วมสำเร็จ",
     "joinedDesc": "เข้าร่วม “{{project}}” แล้ว",
-    "goToProject": "ไปที่ Project"
+    "goToProject": "ไปที่ Project",
+    "mismatchTitle": "คำเชิญนี้ออกให้อีเมลอื่น",
+    "mismatchDesc": "ขณะนี้คุณเข้าสู่ระบบด้วย {{email}} แต่คำเชิญนี้ออกให้อีเมลคนละบัญชี กรุณาเข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญ",
+    "switchAccount": "เข้าสู่ระบบด้วยบัญชีอื่น"
   },
   "home": {
     "subtitle": "Project ที่เป็นเจ้าของหรือเป็นสมาชิก",
