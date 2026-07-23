@@ -16,7 +16,11 @@ import {
 import { ConfigService } from '@nestjs/config'
 import { Throttle } from '@nestjs/throttler'
 import { CookieOptions, Request, Response } from 'express'
-import { AuthService, PublicUser, REFRESH_COOKIE } from './auth.service'
+import { AuthService, REFRESH_COOKIE } from './auth.service'
+
+// Full authenticated profile (public fields + settings) as returned by getMe —
+// the shape login/refresh now hand back so the SPA skips a separate /auth/me call.
+type MeUser = Awaited<ReturnType<AuthService['getMe']>>
 import { GoogleProfile } from './strategies/google.strategy'
 import { JwtGuard } from './guards/jwt.guard'
 import { JwtRefreshGuard } from './guards/jwt-refresh.guard'
@@ -87,10 +91,12 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ user: PublicUser; accessToken: string }> {
+  ): Promise<{ user: MeUser; accessToken: string }> {
     const { user, accessToken, refreshToken } = await this.auth.login(dto.identity, dto.password)
     this.setRefreshCookie(res, refreshToken)
-    return { user, accessToken }
+    // Return the full profile (incl. settings) so the SPA doesn't need a second
+    // serial /auth/me round-trip right after login.
+    return { user: await this.auth.getMe(user.id), accessToken }
   }
 
   /* -------------------------------- refresh ------------------------------- */
@@ -101,10 +107,12 @@ export class AuthController {
   async refresh(
     @Req() req: Request & { user: AuthUser; refreshTokenId: string },
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken: string }> {
+  ): Promise<{ accessToken: string; user: MeUser }> {
     const { accessToken, refreshToken } = await this.auth.rotateRefresh(req.user, req.refreshTokenId)
     this.setRefreshCookie(res, refreshToken)
-    return { accessToken }
+    // Bundle the profile so the SPA's silent bootstrap (on every load/reload)
+    // restores the session in one round-trip instead of refresh → then /auth/me.
+    return { accessToken, user: await this.auth.getMe(req.user.id) }
   }
 
   /* -------------------------------- logout -------------------------------- */

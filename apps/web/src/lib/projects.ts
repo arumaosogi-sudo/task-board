@@ -77,7 +77,15 @@ export function useCreateProject() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: ProjectsApi.create,
-    onSuccess: () => qc.invalidateQueries({ queryKey: projectKeys.list() }),
+    onSuccess: (created) => {
+      // Show the new project card immediately (create returns the full detail, a
+      // superset of the summary) instead of leaving the list stale until a refetch
+      // round-trip lands — the invalidate below reconciles ordering in the background.
+      qc.setQueryData<ProjectSummary[]>(projectKeys.list(), (old) =>
+        old ? [created, ...old.filter((p) => p.id !== created.id)] : old,
+      )
+      qc.invalidateQueries({ queryKey: projectKeys.list() })
+    },
   })
 }
 

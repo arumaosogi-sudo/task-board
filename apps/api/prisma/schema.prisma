@@ -171,6 +171,7 @@ model Invitation {
 
   @@index([projectId])
   @@index([email])
+  @@index([invitedById]) // covering index for the invitedBy FK
 }
 
 model ProjectPin {
@@ -183,6 +184,7 @@ model ProjectPin {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([userId, projectId])
+  @@index([projectId]) // the composite unique is userId-leading; index projectId alone for the FK / cascade
 }
 
 // ─────────────────────────── Phase 3: Files / Work Page ──────────────────────
@@ -255,6 +257,7 @@ model Revision {
   comments Comment[]
 
   @@index([fileId])
+  @@index([authorId]) // covering index for the author FK
 }
 
 // ─────────────────────────── Phase 5: Notifications ──────────────────────────
@@ -322,6 +325,9 @@ model Comment {
   @@index([fileId]) // list all comments for a file
   @@index([fileId, resolvedAt]) // filter all / unresolved / resolved fast
   @@index([parentId]) // load a thread's replies
+  @@index([authorId]) // covering index for the author FK
+  @@index([resolvedById]) // covering index for the resolvedBy FK
+  @@index([sourceRevisionId]) // covering index for the sourceRevision FK
 }
 
 // ─────────────────────── Sprint 4: Public share links (ADR 0006) ─────────────

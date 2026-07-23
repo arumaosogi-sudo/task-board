@@ -10,7 +10,21 @@ initTheme()
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 30_000 },
+    queries: {
+      // A cold API/DB connection (Railway trial tier sleeps; Prisma↔Supavisor can
+      // drop the first pooled connection after idle) makes the very first request
+      // fail, then succeed. Retry up to 3x with exponential backoff so a transient
+      // blip self-heals instead of surfacing a "failed to load" banner. A genuine
+      // 4xx (auth/permission) is not worth retrying — bail out immediately on those.
+      retry: (failureCount, error) => {
+        const status = (error as { response?: { status?: number } })?.response?.status
+        if (status && status >= 400 && status < 500) return false
+        return failureCount < 3
+      },
+      retryDelay: (attempt) => Math.min(500 * 2 ** attempt, 4000),
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+    },
   },
 })
 
