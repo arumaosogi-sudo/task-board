@@ -50,8 +50,14 @@ USER node
 # REST API + Hocuspocus realtime WS share this one port (see CollabService).
 EXPOSE 3001
 
+# Healthcheck follows the SAME port the app binds to (main.ts: process.env.PORT || 3001).
+# Hardcoding 3001 here silently breaks whenever PORT differs from 3001 — e.g. when the
+# platform injects its own PORT and no explicit PORT=3001 is set — because the app then
+# listens elsewhere while this probe still hits 3001, so the container is marked unhealthy
+# and the platform returns 502 even though the app is fine. Reading process.env.PORT keeps
+# the probe and the listener aligned regardless of how PORT is configured.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD node -e "require('http').get('http://localhost:3001/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
+  CMD node -e "require('http').get('http://localhost:'+(process.env.PORT||3001)+'/health', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))"
 
 # entrypoint runs `prisma migrate deploy` then `exec node ...`, so node
 # replaces the shell as PID 1 and receives SIGTERM directly (see
