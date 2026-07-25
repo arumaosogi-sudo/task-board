@@ -362,8 +362,13 @@ export class AuthService {
       })
       // Delivery outcome is logged for operators but deliberately NOT surfaced in
       // the response: revealing "failed" here would leak that the account exists.
-      const ok = await this.mail.sendPasswordResetEmail(user.email, raw).catch(() => false)
-      if (!ok) this.logger.warn(`Password reset email delivery failed for ${user.email}`)
+      // Fire-and-forget so the request doesn't stall on the Gmail API round-trip —
+      // the reset row exists and the link works regardless. Uniform (email-free)
+      // response timing also removes a latency-based account-existence oracle.
+      void this.mail
+        .sendPasswordResetEmail(user.email, raw)
+        .then((ok) => { if (!ok) this.logger.warn(`Password reset email delivery failed for ${user.email}`) })
+        .catch(() => this.logger.warn(`Password reset email delivery failed for ${user.email}`))
     }
     // Always the same response to avoid account enumeration.
     return { message: 'reset-email-sent' }

@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common'
 import { Prisma, Project, Role, User } from '@prisma/client'
@@ -24,6 +25,8 @@ type ProjectCore = Pick<
 
 @Injectable()
 export class ProjectsService {
+  private readonly logger = new Logger(ProjectsService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
@@ -294,7 +297,17 @@ export class ProjectsService {
       }),
     ])
 
-    await this.mail.sendInvitationEmail(email, raw, project.name, inviter.username)
+    // Fire-and-forget the email: the invitation row (created above) is the source
+    // of truth and the accept link works immediately, so blocking the HTTP response
+    // on the Gmail API round-trip (1-3s) just made "invite" feel slow for no gain —
+    // the boolean result was already ignored. Delivery is best-effort and never
+    // throws; log a failure for operators without stalling the request.
+    void this.mail
+      .sendInvitationEmail(email, raw, project.name, inviter.username)
+      .then((ok) => {
+        if (!ok) this.logger.warn(`Invitation email delivery failed for ${email} (project ${project.id})`)
+      })
+      .catch((err) => this.logger.error(`Invitation email threw for ${email}: ${err}`))
 
     // If the invitee already has an account, surface an in-app notification too
     // (users without an account are reached by the invitation email only).
