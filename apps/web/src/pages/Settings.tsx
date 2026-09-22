@@ -9,7 +9,7 @@ import {
 import { ThemeSwitcher } from '../components/ThemeSwitcher'
 import { Icon } from '../lib/icons'
 import { useAuth } from '../lib/auth'
-import { apiError } from '../lib/api'
+import { errorMessage } from '../lib/errorMessage'
 import { setLanguage, type Language } from '../i18n'
 import {
   useChangePassword, useDeleteAccount, useUpdateProfile, useUpdateSetting,
@@ -59,7 +59,7 @@ export default function Settings() {
     setTimeout(() => setBanner(null), 3500)
   }
   function onErr(err: unknown, fallback: string) {
-    flash('error', apiError(err).message || fallback)
+    flash('error', errorMessage(err, t, fallback))
   }
 
   async function saveProfile() {

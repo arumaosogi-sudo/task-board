@@ -5,6 +5,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Card, Button, Input, PasswordInput, Field, Toggle, Banner } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { api, apiError, API_URL } from '../lib/api'
+import { errorMessage } from '../lib/errorMessage'
 
 // The Google OAuth routes redirect here with ?error=<code> when the flow fails
 // (see api GoogleOAuthExceptionFilter), so the user lands on a real page with a
@@ -61,12 +62,11 @@ export default function Login() {
       await login(identity, password)
       navigate(next, { replace: true })
     } catch (err) {
-      const { code, message } = apiError(err)
-      if (code === 'email-not-verified') {
+      if (apiError(err).code === 'email-not-verified') {
         setNeedsVerify(true)
         setError(t('auth.emailNotVerified'))
       } else {
-        setError(message || t('auth.signInFailed'))
+        setError(errorMessage(err, t, t('auth.signInFailed')))
       }
     } finally {
       setLoading(false)

@@ -26,6 +26,14 @@ export interface FileDocument {
   updatedAt: string
 }
 
+/** Fields `PATCH /projects/:id/files/:fileId` accepts (UpdateFileDto on the API). */
+export type UpdateFileBody = {
+  name?: string
+  parentId?: string | null
+  orientation?: 'portrait' | 'landscape'
+  order?: number
+}
+
 export const fileKeys = {
   tree: (projectId: string) => ['files', projectId, 'tree'] as const,
   doc: (projectId: string, fileId: string) => ['files', projectId, 'doc', fileId] as const,
@@ -36,6 +44,8 @@ const FilesApi = {
   get: (pid: string, fid: string) => api.get<FileDocument>(`/projects/${pid}/files/${fid}`).then((r) => r.data),
   create: (pid: string, body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape'; content?: string }) =>
     api.post<FileDocument>(`/projects/${pid}/files`, body).then((r) => r.data),
+  update: (pid: string, fid: string, body: UpdateFileBody) =>
+    api.patch<FileDocument>(`/projects/${pid}/files/${fid}`, body).then((r) => r.data),
   saveContent: (pid: string, fid: string, content: string) =>
     api.put<{ updatedAt: string }>(`/projects/${pid}/files/${fid}/content`, { content }).then((r) => r.data),
   remove: (pid: string, fid: string) => api.delete(`/projects/${pid}/files/${fid}`).then((r) => r.data),
@@ -80,6 +90,25 @@ export function useCreateFile(projectId: string) {
   return useMutation({
     mutationFn: (body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape'; content?: string }) => FilesApi.create(projectId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) }),
+  })
+}
+
+/**
+ * Rename (`name`) and/or move (`parentId`, `null` = project root) a tree node.
+ * The server owns the rules — it rejects a move into a Document, into the node
+ * itself, or into its own descendant (files.service.ts `update`), so the UI only
+ * has to offer the choice, never validate the graph.
+ */
+export function useUpdateFile(projectId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: ({ fileId, ...body }: { fileId: string } & UpdateFileBody) =>
+      FilesApi.update(projectId, fileId, body),
+    onSuccess: (doc) => {
+      qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) })
+      // The open document's header shows its name, so refresh that cache entry too.
+      qc.invalidateQueries({ queryKey: fileKeys.doc(projectId, doc.id) })
+    },
   })
 }
 

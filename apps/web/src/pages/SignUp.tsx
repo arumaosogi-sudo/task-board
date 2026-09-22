@@ -6,6 +6,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Card, Button, Input, PasswordInput, Field, Banner } from '../components/ui'
 import { Icon } from '../lib/icons'
 import { api, apiError } from '../lib/api'
+import { errorMessage } from '../lib/errorMessage'
 
 type Uname = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 
@@ -80,9 +81,8 @@ export default function SignUp() {
         },
       })
     } catch (err) {
-      const { message, code } = apiError(err)
-      if (code === 'username-taken') setUname('taken')
-      setError(message || t('auth.signUpFailed'))
+      if (apiError(err).code === 'username-taken') setUname('taken')
+      setError(errorMessage(err, t, t('auth.signUpFailed')))
     } finally {
       setLoading(false)
     }

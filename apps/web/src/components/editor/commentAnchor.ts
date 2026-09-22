@@ -14,7 +14,11 @@
 import type { Editor } from '@tiptap/core'
 import type { Mark } from '@tiptap/pm/model'
 import type { EditorState } from '@tiptap/pm/state'
-import { absolutePositionToRelativePosition, ySyncPluginKey } from 'y-prosemirror'
+import {
+  absolutePositionToRelativePosition,
+  relativePositionToAbsolutePosition,
+  ySyncPluginKey,
+} from 'y-prosemirror'
 import * as Y from 'yjs'
 
 /* ─────────────────────────── pure list logic ─────────────────────────── */
@@ -66,6 +70,7 @@ type ProsemirrorMapping = Parameters<typeof absolutePositionToRelativePosition>[
 interface YSync {
   type: Y.XmlFragment
   binding: { mapping: ProsemirrorMapping }
+  ydoc: Y.Doc
 }
 
 /** The Collaboration binding — null until the first sync wires it up (or the fragment
@@ -74,8 +79,19 @@ function getYSync(editor: Editor): YSync | null {
   const state = ySyncPluginKey.getState(editor.state) as
     | { type?: Y.XmlFragment; binding?: { mapping: ProsemirrorMapping } }
     | undefined
-  if (!state?.type || !state.binding || !state.type.doc) return null
-  return { type: state.type, binding: state.binding }
+  if (!state?.type || !state.binding) return null
+  const ydoc = state.type.doc
+  if (!ydoc) return null
+  return { type: state.type, binding: state.binding, ydoc }
+}
+
+/**
+ * Can stored anchors be resolved yet? False while the Collaboration binding is still
+ * being wired up — during which a failed {@link resolveAnchor} means "too early", NOT
+ * "orphaned", so callers must wait rather than declare a thread lost.
+ */
+export function isAnchorResolverReady(editor: Editor): boolean {
+  return getYSync(editor) !== null
 }
 
 /** Serialized (JSON-safe) Yjs RelativePosition — matches the backend `@IsObject` DTO field. */
@@ -101,6 +117,32 @@ export function rangeToAnchor(editor: Editor, from: number, to: number): Anchor 
     anchorTo: Y.relativePositionToJSON(relTo) as SerializedRelPos,
     // `'\n'` block separator so a multi-block selection keeps readable text in the fallback.
     anchorText: editor.state.doc.textBetween(from, to, '\n', ' ').slice(0, 10_000),
+  }
+}
+
+/**
+ * Resolve a stored anchor back to an absolute range in the current document.
+ * Returns null when it no longer resolves to a valid, non-empty range (→ orphaned).
+ * Check {@link isAnchorResolverReady} first: before the binding exists this also
+ * returns null, which is "ask again later", not "orphaned".
+ */
+export function resolveAnchor(
+  editor: Editor,
+  anchorFrom: unknown,
+  anchorTo: unknown,
+): { from: number; to: number } | null {
+  const y = getYSync(editor)
+  if (!y || !anchorFrom || !anchorTo) return null
+  try {
+    const relFrom = Y.createRelativePositionFromJSON(anchorFrom)
+    const relTo = Y.createRelativePositionFromJSON(anchorTo)
+    const from = relativePositionToAbsolutePosition(y.ydoc, y.type, relFrom, y.binding.mapping)
+    const to = relativePositionToAbsolutePosition(y.ydoc, y.type, relTo, y.binding.mapping)
+    if (from == null || to == null) return null
+    if (!isValidRange(from, to, editor.state.doc.content.size)) return null
+    return { from, to }
+  } catch {
+    return null
   }
 }
 
@@ -147,16 +189,51 @@ export function hasCommentMark(editor: Editor, commentId: string): boolean {
 }
 
 /** Apply the highlight to a range without disturbing the user's caret/selection. */
-export function applyCommentMark(editor: Editor, from: number, to: number, commentId: string): void {
+export function applyCommentMark(
+  editor: Editor,
+  from: number,
+  to: number,
+  commentId: string,
+  resolved = false,
+): void {
   const type = editor.schema.marks.commentHighlight
   if (!type) return
   editor
     .chain()
     .command(({ tr }) => {
-      tr.addMark(from, to, type.create({ commentId, resolved: false }))
+      tr.addMark(from, to, type.create({ commentId, resolved }))
       return true
     })
     .run()
+}
+
+/**
+ * Re-attach a highlight that is missing from the document but whose stored anchor still
+ * resolves — the case a revision restore creates, since restoring replaces the document
+ * body (and every mark in it) while the comment rows, and their RelativePositions,
+ * survive untouched.
+ *
+ * Returns the thread's live state:
+ *   'live'      — the mark was already there, nothing written
+ *   'recovered' — resolved from the stored anchor and re-applied
+ *   'orphaned'  — the anchored text is genuinely gone
+ *   'pending'   — the Yjs binding isn't ready; ask again, don't show "orphaned" yet
+ *
+ * Writes to the shared document, so only callers with edit rights may invoke it.
+ */
+export function recoverCommentMark(
+  editor: Editor,
+  commentId: string,
+  anchorFrom: unknown,
+  anchorTo: unknown,
+  resolved: boolean,
+): 'live' | 'recovered' | 'orphaned' | 'pending' {
+  if (hasCommentMark(editor, commentId)) return 'live'
+  if (!isAnchorResolverReady(editor)) return 'pending'
+  const range = resolveAnchor(editor, anchorFrom, anchorTo)
+  if (!range) return 'orphaned'
+  applyCommentMark(editor, range.from, range.to, commentId, resolved)
+  return 'recovered'
 }
 
 /**

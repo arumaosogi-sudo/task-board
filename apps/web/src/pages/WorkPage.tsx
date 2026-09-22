@@ -13,17 +13,18 @@ import { SharePanel } from '../components/SharePanel'
 import { Icon } from '../lib/icons'
 import { cn } from '../lib/cn'
 import { useAuth } from '../lib/auth'
-import { getFreshAccessToken } from '../lib/api'
+import { apiError, getFreshAccessToken } from '../lib/api'
 import { colorFromKey, initialOf } from '../lib/presence'
 import { useProject } from '../lib/projects'
 import { RevisionsApi, normalizeCommitLabel, useCreateRevision } from '../lib/revisions'
 import {
   FilesApi,
-  useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent,
+  useCreateFile, useDeleteFile, useFile, useFileTree, useSaveContent, useUpdateFile,
   type FileNode,
 } from '../lib/files'
+import { folderPaths, subtreeIds } from '../lib/fileTree'
 import { REPORT_TEMPLATES, templateContent, type TemplateId } from '../lib/templates'
-import type { Language } from '../i18n'
+import i18n, { type Language } from '../i18n'
 
 // Lazy-loaded: TipTap + Yjs + Hocuspocus is a heavy bundle (~800KB). Split it out
 // so the file tree / landing shell paints without waiting for the editor chunk.
@@ -53,15 +54,17 @@ class EditorErrorBoundary extends React.Component<
   }
   render() {
     if (this.state.error) {
+      // A class component can't use the useTranslation hook, so it reads the shared
+      // i18n instance directly — same catalog, same active language.
       return (
         <div className="flex flex-col items-center justify-center p-12 text-center">
-          <p className="text-lg font-semibold text-ink">เกิดข้อผิดพลาดใน Editor</p>
+          <p className="text-lg font-semibold text-ink">{i18n.t('common.error')}</p>
           <p className="mt-1 text-sm text-muted">{this.state.error.message}</p>
           <button
             className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm text-primary-fg"
             onClick={() => this.setState({ error: null })}
           >
-            ลองใหม่
+            {i18n.t('common.retry')}
           </button>
         </div>
       )
@@ -79,42 +82,129 @@ function flattenTree(nodes: FileNode[]): FileNode[] {
   return nodes.flatMap((n) => [n, ...flattenTree(n.children)])
 }
 
+
 function TreeItem({
-  node, depth, selectedId, onSelect, onDelete, canEdit,
+  node, depth, selectedId, onSelect, onRename, onMove, onDelete, canEdit, canMove,
 }: {
   node: FileNode; depth: number; selectedId: string | null
-  onSelect: (n: FileNode) => void; onDelete: (n: FileNode) => void; canEdit: boolean
+  onSelect: (n: FileNode) => void
+  onRename: (n: FileNode, name: string) => Promise<void>
+  onMove: (n: FileNode) => void
+  onDelete: (n: FileNode) => void
+  canEdit: boolean
+  /** Only true when the project still has folders — otherwise "move" has nowhere to go. */
+  canMove: boolean
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(true)
+  const [renaming, setRenaming] = useState(false)
+  const [draft, setDraft] = useState(node.name)
+  const [saving, setSaving] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
   const isFolder = node.kind === 'Folder'
   const selected = node.id === selectedId
+
+  const startRename = () => { setDraft(node.name); setRenaming(true) }
+
+  // Select the basename on open so typing replaces it (Finder/Explorer behaviour).
+  useEffect(() => {
+    if (!renaming) return
+    const el = inputRef.current
+    if (!el) return
+    el.focus()
+    el.setSelectionRange(0, el.value.length)
+  }, [renaming])
+
+  const commitRename = async () => {
+    const name = draft.trim()
+    if (saving) return
+    if (!name || name === node.name) { setRenaming(false); return }
+    setSaving(true)
+    try {
+      await onRename(node, name)
+      setRenaming(false)
+    } catch {
+      // The error toast is raised by the caller; keep the field open with the user's
+      // text so a rejected name (duplicate, too long) can be corrected, not retyped.
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div>
       <div
         className={cn('group flex items-center gap-1.5 rounded-lg pr-1.5 text-sm', selected ? 'bg-primary-soft text-primary' : 'hover:bg-ink/5')}
         style={{ paddingLeft: 8 + depth * 14 }}
       >
-        <button
-          className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
-          onClick={() => (isFolder ? setOpen((o) => !o) : onSelect(node))}
-        >
-          {isFolder
-            ? <Icon.folder width={15} height={15} className="shrink-0 text-muted" />
-            : <span className="grid size-[15px] shrink-0 place-items-center text-[10px] text-muted">▦</span>}
-          <span className="truncate">{node.name}</span>
-        </button>
-        {canEdit && (
+        {renaming ? (
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 py-1">
+            {isFolder
+              ? <Icon.folder width={15} height={15} className="shrink-0 text-muted" />
+              : <span className="grid size-[15px] shrink-0 place-items-center text-[10px] text-muted">▦</span>}
+            <input
+              ref={inputRef}
+              value={draft}
+              maxLength={200}
+              disabled={saving}
+              aria-label={t('work.renameLabel')}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') { e.preventDefault(); void commitRename() }
+                if (e.key === 'Escape') { e.preventDefault(); setRenaming(false) }
+              }}
+              className="min-w-0 flex-1 rounded-md border border-primary bg-card px-1.5 py-0.5 text-sm text-ink outline-none ring-2 ring-primary/25 disabled:opacity-60"
+            />
+          </div>
+        ) : (
           <button
-            className="hidden size-6 place-items-center rounded text-subtle hover:text-danger group-hover:grid"
-            onClick={() => onDelete(node)} aria-label={t('common.delete')}
+            className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 text-left"
+            onClick={() => (isFolder ? setOpen((o) => !o) : onSelect(node))}
+            onDoubleClick={() => { if (canEdit) startRename() }}
           >
-            <Icon.trash width={14} height={14} />
+            {isFolder
+              ? <Icon.folder width={15} height={15} className="shrink-0 text-muted" />
+              : <span className="grid size-[15px] shrink-0 place-items-center text-[10px] text-muted">▦</span>}
+            <span className="truncate">{node.name}</span>
           </button>
+        )}
+        {canEdit && !renaming && (
+          <Menu
+            align="right"
+            trigger={
+              <button
+                // Always in the layout (so it is reachable by keyboard and causes no shift
+                // on hover) but revealed on hover/focus. Touch devices have no hover, so
+                // it stays visible below `sm`.
+                className={cn(
+                  'grid size-6 place-items-center rounded text-subtle transition-opacity',
+                  'opacity-0 hover:text-ink focus-visible:opacity-100 group-hover:opacity-100 max-sm:opacity-100',
+                  selected && 'opacity-100',
+                )}
+                aria-label={t('work.fileActions', { name: node.name })}
+              >
+                <Icon.dots width={14} height={14} />
+              </button>
+            }
+          >
+            <MenuItem icon={<Icon.edit width={15} height={15} />} onClick={startRename}>
+              {t('work.rename')}
+            </MenuItem>
+            {canMove && (
+              <MenuItem icon={<Icon.folder width={15} height={15} />} onClick={() => onMove(node)}>
+                {t('work.moveTo')}
+              </MenuItem>
+            )}
+            <MenuItem icon={<Icon.trash width={15} height={15} />} danger onClick={() => onDelete(node)}>
+              {t('common.delete')}
+            </MenuItem>
+          </Menu>
         )}
       </div>
       {isFolder && open && node.children.map((c) => (
-        <TreeItem key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect} onDelete={onDelete} canEdit={canEdit} />
+        <TreeItem key={c.id} node={c} depth={depth + 1} selectedId={selectedId} onSelect={onSelect}
+          onRename={onRename} onMove={onMove} onDelete={onDelete} canEdit={canEdit} canMove={canMove} />
       ))}
     </div>
   )
@@ -170,6 +260,7 @@ export default function WorkPage() {
   const { data: project } = useProject(id)
   const { data: tree, isLoading: treeLoading } = useFileTree(id)
   const create = useCreateFile(id)
+  const update = useUpdateFile(id)
   const del = useDeleteFile(id)
   const [searchParams, setSearchParams] = useSearchParams()
   const fileFromUrl = searchParams.get('file')
@@ -189,6 +280,7 @@ export default function WorkPage() {
   const [newOrientation, setNewOrientation] = useState<'portrait' | 'landscape'>('portrait')
   const [newTemplate, setNewTemplate] = useState<TemplateId>('blank')
   const [toDelete, setToDelete] = useState<FileNode | null>(null)
+  const [toMove, setToMove] = useState<FileNode | null>(null)
   const [presence, setPresence] = useState<PresenceUser[]>([])
   const [connStatus, setConnStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting')
   const [historyOpen, setHistoryOpen] = useState(false)
@@ -241,6 +333,10 @@ export default function WorkPage() {
     setActiveCommentId(ids[0])
     setCommentsOpen(true)
   }, [])
+
+  // Folders available as move targets. Document creation is flat (Google Docs-style), so
+  // this is empty in most projects — the "Move to" action hides itself when it is.
+  const folderOptions = useMemo(() => folderPaths(tree ?? []), [tree])
 
   // Roster for @mention autocomplete — derived from the already-cached project detail
   // (no extra request). Shape adapted to what CollabEditor's suggestion needs.
@@ -305,6 +401,28 @@ export default function WorkPage() {
     toastTimer.current = setTimeout(() => setToast(null), 3200)
   }, [])
   useEffect(() => () => clearTimeout(toastTimer.current), [])
+
+  /** Rename a tree node. Rethrows so TreeItem can keep its input open on failure. */
+  const renameNode = useCallback(async (node: FileNode, name: string) => {
+    try {
+      await update.mutateAsync({ fileId: node.id, name })
+      showToast('success', t('work.renamed', { name }))
+    } catch (e) {
+      showToast('error', apiError(e).message ?? t('errors.saveFailed'))
+      throw e
+    }
+  }, [update, showToast, t])
+
+  /** Move a node under `parentId` (null = project root). */
+  const moveNode = useCallback(async (node: FileNode, parentId: string | null) => {
+    try {
+      await update.mutateAsync({ fileId: node.id, parentId })
+      showToast('success', t('work.moved', { name: node.name }))
+      setToMove(null)
+    } catch (e) {
+      showToast('error', apiError(e).message ?? t('errors.saveFailed'))
+    }
+  }, [update, showToast, t])
 
   // Manual commit: persist a revision IMMEDIATELY (bypasses the 5-min auto-snapshot debounce)
   // using the editor's current HTML + the optional message as the revision label. Distinct
@@ -597,7 +715,9 @@ export default function WorkPage() {
             ) : tree && tree.length > 0 ? (
               tree.map((n) => (
                 <TreeItem key={n.id} node={n} depth={0} selectedId={selectedId}
-                  onSelect={(node) => setSelectedId(node.id)} onDelete={setToDelete} canEdit={!!canEdit} />
+                  onSelect={(node) => setSelectedId(node.id)} onRename={renameNode}
+                  onMove={setToMove} onDelete={setToDelete} canEdit={!!canEdit}
+                  canMove={folderOptions.length > 0} />
               ))
             ) : (
               <p className="px-2 py-4 text-body-sm text-muted">{t('work.noFiles')}{canEdit ? t('work.noFilesHint') : ''}</p>
@@ -869,6 +989,48 @@ export default function WorkPage() {
             <Segmented value={newOrientation} onChange={setNewOrientation}
               options={[{ value: 'portrait', label: t('work.portrait') }, { value: 'landscape', label: t('work.landscape') }]} />
           </Field>
+        </div>
+      </Modal>
+
+      {/* Move to folder */}
+      <Modal
+        open={!!toMove}
+        onClose={() => setToMove(null)}
+        title={t('work.moveTitle', { name: toMove?.name ?? '' })}
+        footer={<Button variant="ghost" onClick={() => setToMove(null)}>{t('common.cancel')}</Button>}
+      >
+        <p className="mb-3 text-sm text-muted">{t('work.moveBody')}</p>
+        <div className="max-h-72 space-y-1 overflow-y-auto">
+          {(() => {
+            if (!toMove) return null
+            const blocked = new Set(subtreeIds(toMove))
+            const targets = [
+              { id: null as string | null, label: t('work.moveToRoot') },
+              ...folderOptions.filter((f) => !blocked.has(f.id)),
+            ]
+            return targets.map((target) => {
+              const current = (toMove.parentId ?? null) === target.id
+              return (
+                <button
+                  key={target.id ?? '__root__'}
+                  disabled={current || update.isPending}
+                  onClick={() => void moveNode(toMove, target.id)}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors',
+                    current
+                      ? 'cursor-default bg-ink/5 text-muted'
+                      : 'text-ink hover:bg-primary-soft hover:text-primary disabled:opacity-60',
+                  )}
+                >
+                  {target.id === null
+                    ? <Icon.grid width={15} height={15} className="shrink-0" />
+                    : <Icon.folder width={15} height={15} className="shrink-0" />}
+                  <span className="truncate">{target.label}</span>
+                  {current && <span className="ml-auto shrink-0 text-caption">{t('work.moveCurrent')}</span>}
+                </button>
+              )
+            })
+          })()}
         </div>
       </Modal>
 

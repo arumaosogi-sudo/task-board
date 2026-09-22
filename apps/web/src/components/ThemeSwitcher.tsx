@@ -1,15 +1,17 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { applyMode, applyTheme, getMode, getTheme, THEMES, type Mode, type ThemeId } from '../lib/cn'
 import { cn } from '../lib/cn'
 
 function ModeToggle({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
+  const { t } = useTranslation()
   return (
     <div className="inline-flex rounded-full border border-line bg-card p-0.5">
       {(['light', 'dark'] as Mode[]).map((m) => (
         <button key={m} onClick={() => onChange(m)}
           className={cn('flex h-8 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition',
             mode === m ? 'bg-primary text-primary-fg' : 'text-muted hover:text-ink')}>
-          {m === 'light' ? '☀︎' : '☾'} {m === 'light' ? 'สว่าง' : 'มืด'}
+          {m === 'light' ? '☀︎' : '☾'} {m === 'light' ? t('settings.modeLight') : t('settings.modeDark')}
         </button>
       ))}
     </div>
@@ -53,6 +55,7 @@ export function ThemeSwitcher({
   /** `inline` renders a compact horizontal row (e.g. in a header/menu). */
   inline?: boolean
 }) {
+  const { t } = useTranslation()
   const [theme, setTheme] = useState<ThemeId>(getTheme())
   const [mode, setMode] = useState<Mode>(getMode())
 
@@ -71,11 +74,11 @@ export function ThemeSwitcher({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-ink">สีธีม</p>
+        <p className="text-sm font-medium text-ink">{t('settings.themeColor')}</p>
         <ColorSwatches theme={theme} mode={mode} onChange={pickTheme} />
       </div>
       <div className="flex items-center justify-between">
-        <p className="text-sm font-medium text-ink">โหมดการแสดงผล</p>
+        <p className="text-sm font-medium text-ink">{t('settings.themeMode')}</p>
         <ModeToggle mode={mode} onChange={pickMode} />
       </div>
     </div>

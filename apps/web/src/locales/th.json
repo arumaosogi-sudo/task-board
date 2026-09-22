@@ -4,7 +4,6 @@
     "saving": "กำลังบันทึก…",
     "saved": "บันทึกแล้ว",
     "cancel": "ยกเลิก",
-    "confirm": "ยืนยัน",
     "create": "สร้าง",
     "delete": "ลบ",
     "close": "ปิด",
@@ -14,13 +13,10 @@
     "search": "ค้นหา",
     "settings": "ตั้งค่า",
     "logout": "ออกจากระบบ",
-    "you": "คุณ",
     "youMarker": "(คุณ)",
     "name": "ชื่อ",
     "error": "เกิดข้อผิดพลาด",
-    "retry": "ลองอีกครั้ง",
-    "required": "จำเป็นต้องกรอก",
-    "optional": "(ไม่บังคับ)"
+    "retry": "ลองอีกครั้ง"
   },
   "nav": {
     "allProjects": "Project ทั้งหมด",
@@ -162,7 +158,6 @@
     "leaveFailed": "ออกจาก Project ไม่สำเร็จ"
   },
   "projectCard": {
-    "inviteMembers": "เชิญสมาชิก…",
     "leaveProject": "ออกจาก project"
   },
   "work": {
@@ -185,17 +180,24 @@
     "exportMarkdown": "ส่งออก Markdown (.md)",
     "exportFailed": "ส่งออกไม่สำเร็จ ลองอีกครั้ง",
     "createFileTitle": "สร้างไฟล์ใหม่",
-    "document": "เอกสาร",
-    "folder": "โฟลเดอร์",
     "orientation": "แนวกระดาษ",
     "portrait": "แนวตั้ง",
     "landscape": "แนวนอน",
     "documentNamePlaceholder": "ชื่อเอกสาร",
-    "folderNamePlaceholder": "ชื่อโฟลเดอร์",
     "deleteFileTitle": "ลบไฟล์?",
     "deleteFileBody": "“{{name}}” จะถูกลบ",
     "deleteFolderBody": "“{{name}}” และไฟล์ทั้งหมดข้างในจะถูกลบ",
-    "saveFailed": "บันทึกไม่สำเร็จ"
+    "saveFailed": "บันทึกไม่สำเร็จ",
+    "rename": "เปลี่ยนชื่อ",
+    "renameLabel": "ชื่อใหม่",
+    "renamed": "เปลี่ยนชื่อเป็น “{{name}}” แล้ว",
+    "fileActions": "การจัดการ {{name}}",
+    "moveTo": "ย้ายไปที่…",
+    "moveTitle": "ย้าย “{{name}}”",
+    "moveBody": "เลือกปลายทางที่ต้องการย้ายไป",
+    "moveToRoot": "ระดับบนสุดของ Project",
+    "moveCurrent": "ที่อยู่ปัจจุบัน",
+    "moved": "ย้าย “{{name}}” แล้ว"
   },
   "tasklist": {
     "insert": "แทรกเช็คลิสต์"
@@ -205,7 +207,6 @@
     "write": "เขียน",
     "draw": "วาด",
     "insert": "แทรก",
-    "openDraw": "เปิดพื้นที่วาด",
     "stylusHint": "(รองรับ stylus)",
     "pen": "ปากกา",
     "highlighter": "ปากกาเน้นข้อความ",
@@ -213,7 +214,6 @@
     "penColor": "สีปากกา",
     "brushSize": "ขนาดเส้น",
     "clearDrawing": "ล้างภาพวาดทั้งหมด",
-    "drawHint": "ลากปากกา/เมาส์เพื่อวาดบนหน้ากระดาษ — รองรับ stylus (ปรับความหนาตามแรงกด)",
     "insertImage": "แทรกรูปภาพ",
     "insertBox": "แทรกกล่องข้อความ",
     "deleteBox": "ลบกล่องข้อความ",
@@ -313,11 +313,7 @@
   },
   "shell": {
     "openMenu": "เปิดเมนู",
-    "profile": "โปรไฟล์",
-    "userFallback": "ผู้ใช้งาน",
-    "notSignedIn": "ยังไม่ได้เข้าสู่ระบบ",
-    "profileAccount": "โปรไฟล์ & บัญชี",
-    "ago": "{{time}}ที่แล้ว"
+    "userFallback": "ผู้ใช้งาน"
   },
   "commit": {
     "button": "Commit",
@@ -334,7 +330,6 @@
     "saveCurrentVersion": "บันทึกเวอร์ชันปัจจุบัน",
     "labelPlaceholder": "ป้ายกำกับ (ไม่บังคับ)",
     "saveVersion": "บันทึกเวอร์ชัน",
-    "noLabel": "ไม่มีป้ายกำกับ",
     "autoSnapshot": "บันทึกอัตโนมัติ",
     "commitBadge": "Commit",
     "noVersions": "ยังไม่มีเวอร์ชันที่บันทึกไว้",
@@ -364,7 +359,6 @@
     "range30d": "30 วัน",
     "rangeAll": "ทั้งหมด",
     "allProjects": "ทุก project",
-    "allPeople": "ทุกคน",
     "scopeOwner": "เจ้าของ",
     "scopeMember": "ผู้ร่วมงาน",
     "by": "โดย",
@@ -386,14 +380,12 @@
     "groupFiles": "ไฟล์",
     "groupContent": "เนื้อหา",
     "navigate": "นำทาง",
-    "open": "เปิด",
-    "searching": "กำลังค้นหา…"
+    "open": "เปิด"
   },
   "notifications": {
     "title": "การแจ้งเตือน",
     "empty": "ไม่มีการแจ้งเตือน",
     "markAllRead": "อ่านทั้งหมด",
-    "viewAll": "ดูทั้งหมด",
     "invite": "เชิญคุณเข้าร่วม Project \"{{project}}\"",
     "mention": "กล่าวถึงคุณใน \"{{file}}\"",
     "revision": "บันทึกเวอร์ชันใหม่ใน \"{{file}}\"",
@@ -415,7 +407,6 @@
     "emailUnverified": "ยังไม่ได้ยืนยันอีเมล",
     "saveProfile": "บันทึกโปรไฟล์",
     "profileSaved": "บันทึกโปรไฟล์แล้ว",
-    "emailChangedVerify": "บันทึกแล้ว — กรุณายืนยันอีเมลใหม่จากลิงก์ที่ส่งไปให้",
     "changePassword": "เปลี่ยนรหัสผ่าน",
     "currentPassword": "รหัสผ่านปัจจุบัน",
     "newPassword": "รหัสผ่านใหม่",
@@ -436,7 +427,9 @@
     "deleteAccountWarn": "ข้อมูลทั้งหมดของคุณจะถูกลบและกู้คืนไม่ได้ กรุณายืนยันด้วยรหัสผ่าน",
     "deleteAccountButton": "ลบบัญชีของฉัน",
     "passwordToConfirm": "รหัสผ่านเพื่อยืนยัน",
-    "ownsProjectsHint": "คุณต้องโอนหรือลบ Project ที่คุณเป็นเจ้าของก่อนจึงจะลบบัญชีได้"
+    "ownsProjectsHint": "คุณต้องโอนหรือลบ Project ที่คุณเป็นเจ้าของก่อนจึงจะลบบัญชีได้",
+    "modeLight": "สว่าง",
+    "modeDark": "มืด"
   },
   "errors": {
     "generic": "เกิดข้อผิดพลาดที่ไม่คาดคิด",
@@ -456,11 +449,9 @@
     },
     "manage": {
       "title": "ลิงก์แชร์สาธารณะ",
-      "button": "แชร์",
       "description": "ใครก็ตามที่มีลิงก์สามารถเปิดดูเนื้อหาที่เผยแพร่ได้โดยไม่ต้องเข้าสู่ระบบ",
       "warning": "ใครมีลิงก์นี้เข้าดูได้โดยไม่ต้องล็อกอิน — เฉพาะไฟล์นี้ อ่านอย่างเดียว",
       "create": "สร้างลิงก์ใหม่",
-      "creating": "กำลังสร้าง…",
       "empty": "ยังไม่มีลิงก์แชร์สำหรับไฟล์นี้",
       "ttlLabel": "อายุของลิงก์",
       "ttl7": "7 วัน",
@@ -484,7 +475,6 @@
       "publishedAt": "เผยแพร่ {{when}}",
       "createdBy": "โดย {{name}}",
       "accessCount": "เปิดดู {{count}} ครั้ง",
-      "revokeConfirmTitle": "เพิกถอนลิงก์นี้?",
       "revokeConfirmBody": "ลิงก์จะใช้ไม่ได้ทันที ผู้ที่มีลิงก์จะเปิดดูไม่ได้อีก",
       "publishEmptyConfirm": "เอกสารนี้ว่างเปล่า ต้องการเผยแพร่หน้าว่างหรือไม่?",
       "published": "เผยแพร่เนื้อหาแล้ว",

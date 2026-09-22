@@ -4,7 +4,6 @@
     "saving": "Saving…",
     "saved": "Saved",
     "cancel": "Cancel",
-    "confirm": "Confirm",
     "create": "Create",
     "delete": "Delete",
     "close": "Close",
@@ -14,13 +13,10 @@
     "search": "Search",
     "settings": "Settings",
     "logout": "Log out",
-    "you": "you",
     "youMarker": "(you)",
     "name": "Name",
     "error": "Something went wrong",
-    "retry": "Try again",
-    "required": "Required",
-    "optional": "(optional)"
+    "retry": "Try again"
   },
   "nav": {
     "allProjects": "All Projects",
@@ -162,7 +158,6 @@
     "leaveFailed": "Failed to leave Project"
   },
   "projectCard": {
-    "inviteMembers": "Invite members…",
     "leaveProject": "Leave project"
   },
   "work": {
@@ -185,17 +180,24 @@
     "exportMarkdown": "Export Markdown (.md)",
     "exportFailed": "Export failed. Please try again.",
     "createFileTitle": "Create a new file",
-    "document": "Document",
-    "folder": "Folder",
     "orientation": "Orientation",
     "portrait": "Portrait",
     "landscape": "Landscape",
     "documentNamePlaceholder": "Document name",
-    "folderNamePlaceholder": "Folder name",
     "deleteFileTitle": "Delete file?",
     "deleteFileBody": "“{{name}}” will be deleted",
     "deleteFolderBody": "“{{name}}” and all files inside will be deleted",
-    "saveFailed": "Save failed"
+    "saveFailed": "Save failed",
+    "rename": "Rename",
+    "renameLabel": "New name",
+    "renamed": "Renamed to “{{name}}”",
+    "fileActions": "Actions for {{name}}",
+    "moveTo": "Move to…",
+    "moveTitle": "Move “{{name}}”",
+    "moveBody": "Choose where this item should live.",
+    "moveToRoot": "Project root",
+    "moveCurrent": "Current",
+    "moved": "Moved “{{name}}”"
   },
   "tasklist": {
     "insert": "Insert checklist"
@@ -205,7 +207,6 @@
     "write": "Write",
     "draw": "Draw",
     "insert": "Insert",
-    "openDraw": "Open drawing area",
     "stylusHint": "(stylus supported)",
     "pen": "Pen",
     "highlighter": "Highlighter",
@@ -213,7 +214,6 @@
     "penColor": "Pen color",
     "brushSize": "Brush size",
     "clearDrawing": "Clear all drawing",
-    "drawHint": "Drag a pen/mouse to draw on the page — stylus supported (pressure sets thickness)",
     "insertImage": "Insert image",
     "insertBox": "Insert text box",
     "deleteBox": "Delete text box",
@@ -313,11 +313,7 @@
   },
   "shell": {
     "openMenu": "Open menu",
-    "profile": "Profile",
-    "userFallback": "User",
-    "notSignedIn": "Not signed in",
-    "profileAccount": "Profile & account",
-    "ago": "{{time}} ago"
+    "userFallback": "User"
   },
   "commit": {
     "button": "Commit",
@@ -334,7 +330,6 @@
     "saveCurrentVersion": "Save current version",
     "labelPlaceholder": "Label (optional)",
     "saveVersion": "Save version",
-    "noLabel": "No label",
     "autoSnapshot": "Auto-saved",
     "commitBadge": "Commit",
     "noVersions": "No saved versions yet",
@@ -364,7 +359,6 @@
     "range30d": "30 days",
     "rangeAll": "All",
     "allProjects": "All projects",
-    "allPeople": "Everyone",
     "scopeOwner": "Owner",
     "scopeMember": "Collaborator",
     "by": "By",
@@ -386,14 +380,12 @@
     "groupFiles": "Files",
     "groupContent": "Content",
     "navigate": "Navigate",
-    "open": "Open",
-    "searching": "Searching…"
+    "open": "Open"
   },
   "notifications": {
     "title": "Notifications",
     "empty": "No notifications",
     "markAllRead": "Mark all read",
-    "viewAll": "View all",
     "invite": "invited you to the project \"{{project}}\"",
     "mention": "mentioned you in \"{{file}}\"",
     "revision": "saved a new version in \"{{file}}\"",
@@ -415,7 +407,6 @@
     "emailUnverified": "Email not verified",
     "saveProfile": "Save profile",
     "profileSaved": "Profile saved",
-    "emailChangedVerify": "Saved — please verify your new email from the link we sent",
     "changePassword": "Change password",
     "currentPassword": "Current password",
     "newPassword": "New password",
@@ -436,7 +427,9 @@
     "deleteAccountWarn": "All your data will be permanently deleted. Please confirm with your password.",
     "deleteAccountButton": "Delete my account",
     "passwordToConfirm": "Password to confirm",
-    "ownsProjectsHint": "You must transfer or delete Projects you own before deleting your account"
+    "ownsProjectsHint": "You must transfer or delete Projects you own before deleting your account",
+    "modeLight": "Light",
+    "modeDark": "Dark"
   },
   "errors": {
     "generic": "An unexpected error occurred",
@@ -456,11 +449,9 @@
     },
     "manage": {
       "title": "Public share links",
-      "button": "Share",
       "description": "Anyone with the link can view the published content without signing in.",
       "warning": "Anyone with this link can view without logging in — this file only, read-only.",
       "create": "Create link",
-      "creating": "Creating…",
       "empty": "No share links for this file yet.",
       "ttlLabel": "Link lifetime",
       "ttl7": "7 days",
@@ -484,7 +475,6 @@
       "publishedAt": "Published {{when}}",
       "createdBy": "by {{name}}",
       "accessCount": "Opened {{count}} times",
-      "revokeConfirmTitle": "Revoke this link?",
       "revokeConfirmBody": "The link stops working immediately; holders can no longer open it.",
       "publishEmptyConfirm": "This document is empty. Publish a blank page?",
       "published": "Content published",

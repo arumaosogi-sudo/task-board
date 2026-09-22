@@ -7,7 +7,7 @@
 //
 // Comments are plain text (never HTML) — the backend stores/returns raw strings, so rendering
 // them as text content carries no XSS surface.
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/core'
 import { Button, EmptyState, Skeleton, Tag } from './ui'
@@ -25,6 +25,7 @@ import {
   countComments,
   filterComments,
   hasCommentMark,
+  recoverCommentMark,
   removeCommentMark,
   scrollToComment,
   setCommentMarkResolved,
@@ -153,12 +154,42 @@ export function CommentsPanel({
 
   // Which threads still resolve to a live highlight (vs. orphaned). Recomputed when the
   // list changes or the panel (re)opens — not on every keystroke in the doc.
-  const anchored = useMemo(() => {
-    const map: Record<string, boolean> = {}
-    if (editor && open) for (const r of roots) map[r.id] = hasCommentMark(editor, r.id)
-    return map
+  //
+  // A missing mark is not automatically "orphaned": restoring a revision replaces the
+  // document body and every mark in it, while the comment rows — and the Yjs
+  // RelativePositions stored on them — survive. So when the mark is gone we resolve the
+  // stored anchor and re-apply the highlight (recoverCommentMark). This writes to the
+  // shared document, hence the `canResolve` (Editor+) gate: a Viewer sees such a thread
+  // as orphaned until someone with edit rights opens the panel and heals it.
+  //
+  // Runs in an effect, not useMemo, because re-applying a mark dispatches an editor
+  // transaction — a side effect that must never happen during render.
+  const [anchored, setAnchored] = useState<Record<string, boolean>>({})
+  useEffect(() => {
+    if (!editor || !open) { setAnchored({}); return }
+    let stop = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let attempts = 0
+    const pass = () => {
+      if (stop) return
+      const map: Record<string, boolean> = {}
+      let pending = false
+      for (const r of roots) {
+        const state = canResolve
+          ? recoverCommentMark(editor, r.id, r.anchorFrom, r.anchorTo, r.resolved)
+          : (hasCommentMark(editor, r.id) ? 'live' : 'orphaned')
+        if (state === 'pending') pending = true
+        map[r.id] = state === 'live' || state === 'recovered'
+      }
+      setAnchored(map)
+      // The Yjs binding wires up a moment after the editor mounts. Re-check briefly
+      // rather than labelling every thread orphaned during that window (~3s cap).
+      if (pending && attempts++ < 20) timer = setTimeout(pass, 150)
+    }
+    pass()
+    return () => { stop = true; clearTimeout(timer) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editor, open, comments])
+  }, [editor, open, comments, canResolve])
 
   // Focus the thread whose highlight was clicked in the document.
   const cardRefs = useRef<Record<string, HTMLDivElement | null>>({})
