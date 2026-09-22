@@ -8,7 +8,7 @@ export type Language = 'th' | 'en'
 const STORAGE_KEY = 'tb-lang'
 
 /** Read the persisted UI language, defaulting to Thai (the product's primary locale). */
-export function getStoredLanguage(): Language {
+function getStoredLanguage(): Language {
   try {
     const v = localStorage.getItem(STORAGE_KEY)
     if (v === 'th' || v === 'en') return v

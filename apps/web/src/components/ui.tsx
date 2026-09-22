@@ -187,24 +187,6 @@ export function Avatar({ initial, ck, size = 32, ring }: { initial: string; ck?:
   )
 }
 
-export function AvatarStack({ people, max = 3, size = 26 }: { people: { initial: string; key: string }[]; max?: number; size?: number }) {
-  const shown = people.slice(0, max)
-  const extra = people.length - shown.length
-  return (
-    <div className="flex items-center">
-      {shown.map((p, i) => (
-        <span key={i} style={{ marginLeft: i === 0 ? 0 : -8, zIndex: max - i }}>
-          <Avatar initial={p.initial} ck={p.key} size={size} ring />
-        </span>
-      ))}
-      {extra > 0 && (
-        <span className="grid place-items-center rounded-full bg-ink/10 text-ink text-[11px] font-semibold ring-2 ring-card"
-          style={{ width: size, height: size, marginLeft: -8 }}>+{extra}</span>
-      )}
-    </div>
-  )
-}
-
 /* ------------------------------------ Menu ----------------------------------- */
 export function Menu({ trigger, children, align = 'right' }: { trigger: ReactNode; children: ReactNode; align?: 'left' | 'right' }) {
   const [open, setOpen] = useState(false)

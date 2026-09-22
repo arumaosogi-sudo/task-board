@@ -36,8 +36,6 @@ const FilesApi = {
   get: (pid: string, fid: string) => api.get<FileDocument>(`/projects/${pid}/files/${fid}`).then((r) => r.data),
   create: (pid: string, body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape'; content?: string }) =>
     api.post<FileDocument>(`/projects/${pid}/files`, body).then((r) => r.data),
-  update: (pid: string, fid: string, body: { name?: string; parentId?: string | null; orientation?: string; order?: number }) =>
-    api.patch<FileDocument>(`/projects/${pid}/files/${fid}`, body).then((r) => r.data),
   saveContent: (pid: string, fid: string, content: string) =>
     api.put<{ updatedAt: string }>(`/projects/${pid}/files/${fid}/content`, { content }).then((r) => r.data),
   remove: (pid: string, fid: string) => api.delete(`/projects/${pid}/files/${fid}`).then((r) => r.data),
@@ -81,15 +79,6 @@ export function useCreateFile(projectId: string) {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (body: { name: string; kind: FileKind; parentId?: string | null; orientation?: 'portrait' | 'landscape'; content?: string }) => FilesApi.create(projectId, body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) }),
-  })
-}
-
-export function useUpdateFile(projectId: string) {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: ({ fileId, ...body }: { fileId: string; name?: string; parentId?: string | null }) =>
-      FilesApi.update(projectId, fileId, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: fileKeys.tree(projectId) }),
   })
 }

@@ -13,11 +13,8 @@
 // gone (e.g. after a revision restore) to decide "orphaned".
 import type { Editor } from '@tiptap/core'
 import type { Mark } from '@tiptap/pm/model'
-import { ySyncPluginKey } from 'y-prosemirror'
-import {
-  absolutePositionToRelativePosition,
-  relativePositionToAbsolutePosition,
-} from 'y-prosemirror'
+import type { EditorState } from '@tiptap/pm/state'
+import { absolutePositionToRelativePosition, ySyncPluginKey } from 'y-prosemirror'
 import * as Y from 'yjs'
 
 /* ─────────────────────────── pure list logic ─────────────────────────── */
@@ -69,18 +66,16 @@ type ProsemirrorMapping = Parameters<typeof absolutePositionToRelativePosition>[
 interface YSync {
   type: Y.XmlFragment
   binding: { mapping: ProsemirrorMapping }
-  ydoc: Y.Doc
 }
 
-/** The Collaboration binding — null until the first sync wires it up. */
+/** The Collaboration binding — null until the first sync wires it up (or the fragment
+ *  isn't attached to a Y.Doc yet, in which case a position would be meaningless). */
 function getYSync(editor: Editor): YSync | null {
   const state = ySyncPluginKey.getState(editor.state) as
     | { type?: Y.XmlFragment; binding?: { mapping: ProsemirrorMapping } }
     | undefined
-  if (!state?.type || !state.binding) return null
-  const ydoc = state.type.doc
-  if (!ydoc) return null
-  return { type: state.type, binding: state.binding, ydoc }
+  if (!state?.type || !state.binding || !state.type.doc) return null
+  return { type: state.type, binding: state.binding }
 }
 
 /** Serialized (JSON-safe) Yjs RelativePosition — matches the backend `@IsObject` DTO field. */
@@ -106,30 +101,6 @@ export function rangeToAnchor(editor: Editor, from: number, to: number): Anchor 
     anchorTo: Y.relativePositionToJSON(relTo) as SerializedRelPos,
     // `'\n'` block separator so a multi-block selection keeps readable text in the fallback.
     anchorText: editor.state.doc.textBetween(from, to, '\n', ' ').slice(0, 10_000),
-  }
-}
-
-/**
- * Resolve a stored anchor back to an absolute range in the current document.
- * Returns null when it no longer resolves to a valid, non-empty range (→ orphaned).
- */
-export function resolveAnchor(
-  editor: Editor,
-  anchorFrom: unknown,
-  anchorTo: unknown,
-): { from: number; to: number } | null {
-  const y = getYSync(editor)
-  if (!y || !anchorFrom || !anchorTo) return null
-  try {
-    const relFrom = Y.createRelativePositionFromJSON(anchorFrom)
-    const relTo = Y.createRelativePositionFromJSON(anchorTo)
-    const from = relativePositionToAbsolutePosition(y.ydoc, y.type, relFrom, y.binding.mapping)
-    const to = relativePositionToAbsolutePosition(y.ydoc, y.type, relTo, y.binding.mapping)
-    if (from == null || to == null) return null
-    if (!isValidRange(from, to, editor.state.doc.content.size)) return null
-    return { from, to }
-  } catch {
-    return null
   }
 }
 
@@ -162,7 +133,7 @@ function scanCommentMark(
 }
 
 /** Range carrying `commentHighlight` for this id, or null (used for scroll + anchored test). */
-export function findCommentMarkRange(
+function findCommentMarkRange(
   editor: Editor,
   commentId: string,
 ): { from: number; to: number } | null {
@@ -221,11 +192,12 @@ export function removeCommentMark(editor: Editor, commentId: string): void {
     .run()
 }
 
-/** Comment ids whose highlight covers `pos` — drives click-to-open (incl. overlaps). */
-export function commentIdsAt(editor: Editor, pos: number): string[] {
-  const type = editor.schema.marks.commentHighlight
+/** Comment ids whose highlight covers `pos` — drives click-to-open (incl. overlaps).
+ *  Takes the EditorState (not the Editor) so a ProseMirror `handleClick` can call it. */
+export function commentIdsAt(state: EditorState, pos: number): string[] {
+  const type = state.schema.marks.commentHighlight
   if (!type) return []
-  const $pos = editor.state.doc.resolve(pos)
+  const $pos = state.doc.resolve(pos)
   const ids = $pos
     .marks()
     .filter((m) => m.type === type && m.attrs.commentId)

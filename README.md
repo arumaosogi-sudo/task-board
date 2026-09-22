@@ -48,7 +48,7 @@ Mental model: "GitHub diff + GoodNotes + Google Docs". Bilingual (Thai / English
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 22+ (what CI and both Docker images run)
 - Docker Desktop (optional — for the local PostgreSQL + Mailpit stack)
 
 ## Setup (local dev)
@@ -232,17 +232,25 @@ apps/
     src/
       auth/          JWT + refresh + Google OAuth + account management
       projects/      project CRUD + membership + role guard
-      files/         file tree + document content + revisions
+      files/         file tree + document content + revisions + asset upload
       collab/        Hocuspocus WebSocket server (Yjs)
+      comments/      anchored document comment threads
+      share/         public read-only share links (+ their guard)
       notifications/ in-app notifications (invite / mention / revision)
       search/        cross-project name + content search
+      updates/       my-updates + project-changes activity feeds
+      mail/          SMTP + Gmail API transports
+      storage/       Supabase Storage client (private asset bucket)
+      config/        CORS allowlist + startup secret validation
     prisma/          schema + migrations
     Dockerfile
   web/          React SPA (Vite)
     src/
       pages/         Login, Home, WorkPage, Settings, ...
-      components/    UI kit, CollabEditor, NotificationBell, SearchOverlay
+      components/    UI kit, CollabEditor, CommentsPanel, NotificationBell, SearchOverlay
+      components/editor/  TipTap extensions + the inline drawing overlay
       lib/           API client + React Query hooks
+      lib/export/    PDF / Word / Markdown export
       i18n/          i18next setup
       locales/       th.json + en.json
     Dockerfile · nginx.conf

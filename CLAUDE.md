@@ -29,10 +29,26 @@ npm install                # install all 3 workspaces
 npm run dev                 # turbo dev: api + collab WS (both :3001, shared server) + web (:5173) together
 npm run typecheck           # tsc --noEmit across api, web, packages/shared
 npm run build                # tsc (api) + vite build (web)
-npm run lint                 # currently a no-op placeholder in every workspace (`echo "lint ok"`) — do not assume real linting runs
+npm run lint                 # real ESLint 9 flat config (typescript-eslint) — `eslint src` in every workspace
+npm run format[:check]      # Prettier — available, but NOT gated in CI
+npm test                    # unit tests everywhere: jest (api) + vitest (web). Mocked Prisma, no DB needed
 ```
 
-There is **no test suite** in this repo (no test runner configured, no `*.spec.ts`/`*.test.tsx` files exist). `npm run test` maps to `turbo test` but no workspace defines a `test` script — don't invent test commands or assume coverage exists.
+> **Run `npx prisma generate --schema apps/api/prisma/schema.prisma` after a fresh clone.**
+> `@prisma/client` is generated, not checked in, so `typecheck`, `test`, and `build` all fail
+> with "has no exported member 'User'" until it exists. CI does this as its own step.
+
+Two further suites are **excluded from `npm test`** on purpose, because each needs live
+infrastructure. Both have a one-command local runner that boots an isolated stack (never the
+dev one) and tears it down after — see `ops/RUNBOOK.md` §7:
+
+```bash
+npm run test:int:local      # apps/api/**/*.int-spec.ts against a real Postgres (RLS + schema drift)
+npm run test:e2e:local      # Playwright specs in e2e/ against a real browser + full stack
+```
+
+CI (`.github/workflows/ci.yml`) runs lint → typecheck → `npm test` → build, plus a separate
+`api-integration` job with an ephemeral `postgres:16`. The e2e suite is deliberately not in CI.
 
 Prisma (run from `apps/api`):
 
@@ -62,8 +78,8 @@ Browser (SPA) ──REST + cookie──▶ api (NestJS, :3001)
                                PostgreSQL (Prisma)
 ```
 
-- `apps/api/src/` — one NestJS module per domain: `auth`, `projects`, `files`, `collab` (Hocuspocus server), `notifications`, `search`, `updates`, `users`, `mail`. `prisma/schema.prisma` is the single source of truth for the data model; `prisma/migrations/` tracks history.
-- `apps/web/src/` — `pages/` (route-level screens), `components/` (shared UI incl. `CollabEditor.tsx`, `DrawingCanvas.tsx`, `ui.tsx` kit), `lib/` (API client + React Query hooks), `i18n/` + `locales/` (th.json / en.json).
+- `apps/api/src/` — one NestJS module per domain: `auth`, `projects`, `files`, `collab` (Hocuspocus server), `comments`, `share` (public read-only links), `notifications`, `search`, `updates`, `users`, `mail`, plus the non-domain `prisma`, `config` (CORS + secret validation) and `storage` (Supabase Storage client) folders. `prisma/schema.prisma` is the single source of truth for the data model; `prisma/migrations/` tracks history.
+- `apps/web/src/` — `pages/` (route-level screens), `components/` (shared UI incl. `CollabEditor.tsx`, `CommentsPanel.tsx`, the `editor/` TipTap extensions + `DrawingOverlay.tsx`, and the `ui.tsx` kit), `lib/` (API client + React Query hooks + `export/` for PDF/Word/Markdown), `i18n/` + `locales/` (th.json / en.json).
 - `packages/shared/src/types.ts` — TypeScript types shared between `apps/api` and `apps/web`. Change types here first when a shape needs to change on both sides; both workspaces resolve it via the npm workspace link, no build step needed (`packages/shared` build is a no-op).
 
 ### Authorization model

@@ -7,7 +7,7 @@
 // a data-URL and rehydrating legacy Phase-3 inline-SVG drawings.
 
 /** Serialize an <svg> markup string to an inline data-URL usable as an <img> src. */
-export function svgToDataUrl(svg: string): string {
+function svgToDataUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 

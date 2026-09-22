@@ -10,6 +10,15 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # The RLS migration REVOKEs from Supabase's `anon` / `authenticated` roles,
+      # which a vanilla postgres image does not have — without this, the documented
+      # first run (`prisma migrate deploy`, and the api container's own entrypoint)
+      # dies with: role "anon" does not exist. The image runs everything in this
+      # directory on FIRST init only, so an existing `pgdata` volume needs either
+      # `docker compose down -v` or a one-off:
+      #   docker compose exec -T db psql -U taskboard -d taskboard \
+      #     < ops/scripts/sql/create-test-roles.sql
+      - ./ops/scripts/sql/create-test-roles.sql:/docker-entrypoint-initdb.d/00-supabase-roles.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U taskboard"]
       interval: 5s

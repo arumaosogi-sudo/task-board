@@ -41,7 +41,7 @@ COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY apps/api/prisma ./apps/api/prisma
 COPY apps/api/docker-entrypoint.sh /app/docker-entrypoint.sh
 
-# node:20-slim already ships a non-root "node" user (uid 1000) — reuse it,
+# node:22-slim already ships a non-root "node" user (uid 1000) — reuse it,
 # just make sure it owns what it needs to read/write (node_modules/.prisma
 # query-engine cache, migration state).
 RUN chmod +x /app/docker-entrypoint.sh && chown -R node:node /app

@@ -18,9 +18,6 @@
     "test:int:local": "node ops/scripts/test-int-local.mjs",
     "test:e2e:local": "node ops/scripts/test-e2e-local.mjs"
   },
-  "dependencies": {
-    "@nestjs/platform-express": "^11.1.28"
-  },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
     "eslint": "^9.39.5",
@@ -33,7 +30,7 @@
     "typescript-eslint": "^8.64.0"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "overrides": {
     "multer": "2.2.0",

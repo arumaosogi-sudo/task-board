@@ -41,7 +41,7 @@ import { Box } from './editor/Box'
 import { FontSize } from './editor/FontSize'
 import { ResizableImage } from './editor/ResizableImage'
 import { CommentHighlight } from './editor/CommentHighlight'
-import { applyCommentMark, rangeToAnchor } from './editor/commentAnchor'
+import { applyCommentMark, commentIdsAt, rangeToAnchor } from './editor/commentAnchor'
 import { migrateLegacyDrawings } from './editor/drawing'
 import { DrawingOverlay } from './editor/DrawingOverlay'
 import { DRAW_ORIGIN, DRAW_COLORS, DRAW_SIZES, type DrawTool } from './editor/drawingModel'
@@ -357,13 +357,8 @@ function CollabEditorInner({
       handleClick: (view, pos) => {
         const notify = onCommentActivateRef.current
         if (!notify) return false
-        const $pos = view.state.doc.resolve(pos)
-        const type = view.state.schema.marks.commentHighlight
-        const ids = $pos
-          .marks()
-          .filter((m) => m.type === type && m.attrs.commentId)
-          .map((m) => m.attrs.commentId as string)
-        if (ids.length) notify([...new Set(ids)])
+        const ids = commentIdsAt(view.state, pos)
+        if (ids.length) notify(ids)
         return false
       },
     },
