@@ -1,0 +1,87 @@
+# Render Blueprint — public demo deploy for Task Board.
+#
+# Why Render and not Vercel: the API serves the Hocuspocus collaboration
+# WebSocket on the same HTTP server as the REST API (see CollabService), and a
+# serverless function cannot hold a socket open. The API therefore needs a
+# long-running container; Render builds apps/api/Dockerfile directly.
+#
+# The database is NOT defined here on purpose — it lives on Neon, so
+# DATABASE_URL / DIRECT_URL are marked `sync: false` and are pasted into the
+# Render dashboard by hand (Render never sees them in git).
+#
+# Migrations need no step here either: apps/api/docker-entrypoint.sh runs
+# `prisma migrate deploy` before exec'ing node, on every deploy.
+#
+# First deploy: Render → New → Blueprint → pick this repo. Render reads this
+# file, creates both services, and asks for the two `sync: false` values.
+#
+# NOTE ON URLS: *.onrender.com hostnames are globally unique. If either name
+# below is already taken, Render appends a suffix and the hardcoded URLs stop
+# matching. After the first deploy, check both service URLs and — if they
+# differ — update WEB_URL / CORS_ORIGINS on the API and VITE_API_URL /
+# VITE_COLLAB_URL on the web service. Nothing else depends on the names.
+
+services:
+  # ── API: NestJS + Prisma + Hocuspocus WS (one container, one port) ─────────
+  - type: web
+    name: taskboard-aruma-api
+    runtime: docker
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .          # must be the repo root: npm workspaces + packages/shared
+    plan: free
+    region: singapore
+    healthCheckPath: /health  # liveness only; /health/ready also checks the DB
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Neon. DATABASE_URL = pooled (-pooler host), DIRECT_URL = direct :5432,
+      # which `prisma migrate deploy` needs. Both set in the dashboard.
+      - key: DATABASE_URL
+        sync: false
+      - key: DIRECT_URL
+        sync: false
+
+      # Render generates a 256-bit base64 value (44 chars), which clears the
+      # >= 32 char check in apps/api/src/config/validate-secrets.ts.
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRES
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES
+        value: 30d
+
+      # The API refuses cross-origin requests from anywhere not listed here.
+      - key: WEB_URL
+        value: https://taskboard-aruma-web.onrender.com
+      - key: CORS_ORIGINS
+        value: https://taskboard-aruma-web.onrender.com
+
+      # Email and Google OAuth are deliberately unset. Without GMAIL_* / SMTP_*
+      # the app cannot send verification mail, and without GOOGLE_CLIENT_SECRET
+      # the Google routes return 503 by design instead of crashing. The demo
+      # account created by ops/scripts/create-demo-user.mjs is pre-verified, so
+      # neither is needed to try the app.
+
+  # ── Web: React + Vite SPA, served as a static site (free, never sleeps) ────
+  - type: web
+    name: taskboard-aruma-web
+    runtime: static
+    buildCommand: npm ci && npm run build --workspace @task-board/web
+    staticPublishPath: apps/web/dist
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Vite inlines these at BUILD time — changing them rebuilds the bundle.
+      - key: VITE_API_URL
+        value: https://taskboard-aruma-api.onrender.com
+      - key: VITE_COLLAB_URL
+        value: wss://taskboard-aruma-api.onrender.com
+    routes:
+      # SPA history fallback: every unknown path must serve index.html or a
+      # hard refresh on /projects/123 returns 404 instead of the app.
+      - type: rewrite
+        source: /*
+        destination: /index.html
