@@ -443,6 +443,13 @@ function CollabEditorInner({
     if (!onStatusChange) return
     const onStatus = (e: { status: 'connecting' | 'connected' | 'disconnected' }) => onStatusChange(e.status)
     provider.on('status', onStatus)
+    // Catch up on the status the provider already has, exactly as the `synced`
+    // subscription above does. The outer <CollabEditor> defers mounting this
+    // component until the first `synced`, so by the time this effect runs the
+    // provider has long since emitted `status: connected` — subscribing alone
+    // would leave the caller stuck on its initial "connecting" forever, which
+    // is what the header showed on a healthy connection.
+    onStatusChange(provider.status)
     return () => { provider.off('status', onStatus) }
   }, [provider, onStatusChange])
 
