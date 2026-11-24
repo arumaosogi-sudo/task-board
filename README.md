@@ -1,5 +1,10 @@
 # Task Board
 
+**Live demo:** https://taskboard-aruma-web.onrender.com — sign in with
+`demo@task-board.app` / `demo-task-board-2026`.
+The API runs on a free Render instance that sleeps when idle, so the first
+request after a quiet spell can take up to a minute to answer.
+
 Real-time collaborative report-writing app. Monorepo with a NestJS API + React web SPA.
 Mental model: "GitHub diff + GoodNotes + Google Docs". Bilingual (Thai / English).
 
