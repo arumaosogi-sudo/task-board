@@ -6,6 +6,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Card, Button, Input, PasswordInput, Field, Banner } from '../components/ui'
 import { Icon } from '../lib/icons'
 import { api, apiError } from '../lib/api'
+import { SIGNUP_DISABLED, DEMO_HINT } from '../lib/features'
 
 type Uname = 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
 
@@ -86,6 +87,23 @@ export default function SignUp() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // Reached by typing /signup directly: the link into this page is already
+  // hidden when sign-up is off. Show why instead of a form the API will refuse.
+  if (SIGNUP_DISABLED) {
+    return (
+      <AuthLayout>
+        <Card className="p-6 sm:p-7">
+          <h1 className="text-center font-heading text-h2">{t('auth.signUpClosedTitle')}</h1>
+          <p className="mt-4 text-center text-body text-muted">{t('auth.signUpClosedBody')}</p>
+          {DEMO_HINT && <p className="mt-3 text-center text-body text-muted">{DEMO_HINT}</p>}
+          <Link to="/" className="mt-6 block text-center font-medium text-primary hover:underline">
+            {t('auth.backToSignIn')}
+          </Link>
+        </Card>
+      </AuthLayout>
+    )
   }
 
   return (

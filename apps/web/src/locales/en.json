@@ -38,6 +38,8 @@
     "username": "Username",
     "signIn": "Sign in",
     "signUp": "Sign up",
+    "signUpClosedTitle": "Sign-up is closed",
+    "signUpClosedBody": "This deployment is a public demo, so new accounts are turned off.",
     "or": "or",
     "continueGoogle": "Continue with Google",
     "newToTaskBoard": "New to Task Board?",

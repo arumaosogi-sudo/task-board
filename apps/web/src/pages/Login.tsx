@@ -5,6 +5,7 @@ import { AuthLayout } from '../components/AuthLayout'
 import { Card, Button, Input, PasswordInput, Field, Toggle, Banner } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { api, apiError, API_URL } from '../lib/api'
+import { SIGNUP_DISABLED, DEMO_HINT } from '../lib/features'
 
 // The Google OAuth routes redirect here with ?error=<code> when the flow fails
 // (see api GoogleOAuthExceptionFilter), so the user lands on a real page with a
@@ -167,10 +168,14 @@ export default function Login() {
           {t('auth.continueGoogle')}
         </Button>
 
-        <p className="mt-6 text-center text-body text-muted">
-          {t('auth.newToTaskBoard')}{' '}
-          <Link to="/signup" className="font-medium text-primary hover:underline">{t('auth.signUp')}</Link>
-        </p>
+        {SIGNUP_DISABLED ? (
+          DEMO_HINT && <p className="mt-6 text-center text-body text-muted">{DEMO_HINT}</p>
+        ) : (
+          <p className="mt-6 text-center text-body text-muted">
+            {t('auth.newToTaskBoard')}{' '}
+            <Link to="/signup" className="font-medium text-primary hover:underline">{t('auth.signUp')}</Link>
+          </p>
+        )}
       </Card>
     </AuthLayout>
   )

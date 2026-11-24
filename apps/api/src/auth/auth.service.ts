@@ -123,6 +123,19 @@ export class AuthService {
     email: string,
     password: string,
   ): Promise<{ message: string; emailDelivery: EmailDelivery }> {
+    // Public sign-up can be switched off per deployment (SIGNUP_DISABLED=true).
+    // The public demo runs with no mail provider, so a new account could never
+    // clear the emailVerified gate in `login` — the row was created and then the
+    // verification send failed, leaving a 500 for the visitor and an account
+    // nobody can use. Refusing up front also keeps an open endpoint from
+    // spending a cost-12 bcrypt hash per request on a shared free instance.
+    if (this.config.get<string>('SIGNUP_DISABLED') === 'true') {
+      throw new ForbiddenException({
+        code: 'signup-disabled',
+        message: 'เดโมนี้ปิดการสมัครสมาชิก กรุณาเข้าสู่ระบบด้วยบัญชีตัวอย่างที่ให้ไว้',
+      })
+    }
+
     const normalizedEmail = email.toLowerCase()
     const byEmail = await this.users.findByEmail(normalizedEmail)
 

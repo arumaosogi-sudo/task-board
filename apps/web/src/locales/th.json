@@ -38,6 +38,8 @@
     "username": "Username",
     "signIn": "เข้าสู่ระบบ",
     "signUp": "สมัครสมาชิก",
+    "signUpClosedTitle": "ปิดรับสมัครสมาชิก",
+    "signUpClosedBody": "เว็บนี้เป็นเดโมสาธารณะ จึงปิดการสร้างบัญชีใหม่ไว้",
     "or": "หรือ",
     "continueGoogle": "ดำเนินการต่อด้วย Google",
     "newToTaskBoard": "เพิ่งเริ่มใช้ Task Board?",

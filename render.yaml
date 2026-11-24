@@ -59,6 +59,12 @@ services:
       - key: CORS_ORIGINS
         value: https://taskboard-aruma-web.onrender.com
 
+      # No mail provider here, so a new account could never pass the
+      # emailVerified check in login: POST /auth/register is refused outright
+      # rather than creating a row and then failing on the verification send.
+      - key: SIGNUP_DISABLED
+        value: "true"
+
       # Email and Google OAuth are deliberately unset. Without GMAIL_* / SMTP_*
       # the app cannot send verification mail, and without GOOGLE_CLIENT_SECRET
       # the Google routes return 503 by design instead of crashing. The demo
@@ -79,6 +85,12 @@ services:
         value: https://taskboard-aruma-api.onrender.com
       - key: VITE_COLLAB_URL
         value: wss://taskboard-aruma-api.onrender.com
+      # Must match SIGNUP_DISABLED on the API — this only hides the UI routes
+      # into sign-up; the API is the gate that actually refuses.
+      - key: VITE_SIGNUP_DISABLED
+        value: "true"
+      - key: VITE_DEMO_HINT
+        value: "Demo sign-in: demo@task-board.app / demo-task-board-2026"
     routes:
       # SPA history fallback: every unknown path must serve index.html or a
       # hard refresh on /projects/123 returns 404 instead of the app.
